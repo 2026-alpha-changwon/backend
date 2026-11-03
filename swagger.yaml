@@ -1,0 +1,193 @@
+openapi: 3.0.3
+info:
+  title: 먼저가요 창원 인증 API
+  version: 0.1.0
+  description: >-
+    초기 개발용 API 계약 초안입니다. 로그인·내 정보·로그아웃 API를 정의합니다.
+    현재 main.py와 handler·service는 미구현 상태입니다.
+    세션 쿠키 이름은 session으로 제안하며 만료시간은 인증 구현 시 정합니다.
+    개발 단계에서는 같은 계정의 동시 로그인을 허용합니다.
+servers:
+  - url: http://localhost:8000
+    description: 개발 서버 주소 예시
+tags:
+  - name: Auth
+    description: 로그인과 세션 관리
+security:
+  - CookieAuth: []
+paths:
+  /auth/login:
+    post:
+      tags: [Auth]
+      operationId: login
+      summary: 로그인
+      description: >-
+        계정과 비밀번호를 확인한 뒤 새 세션을 발급합니다.
+        새 로그인은 기존의 다른 유효 세션을 유지합니다.
+        성공 응답의 Set-Cookie로 세션을 전달합니다.
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/LoginRequest'
+            example:
+              login_id: demo_worker
+              password: example-password
+      responses:
+        '200':
+          description: 로그인 성공과 현재 사용자 정보
+          headers:
+            Set-Cookie:
+              description: >-
+                실제 세션 토큰을 HttpOnly 쿠키로 설정합니다.
+                HTTPS 배포 환경에서는 Secure 속성을 적용합니다.
+                쿠키 만료는 서버의 세션 만료 정책에 맞춥니다.
+              schema:
+                type: string
+                example: 'session=example-session-token; Path=/; HttpOnly; SameSite=Lax'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UserResponse'
+        '401':
+          $ref: '#/components/responses/LoginFailed'
+        '422':
+          $ref: '#/components/responses/InvalidRequest'
+  /auth/me:
+    get:
+      tags: [Auth]
+      operationId: getCurrentUser
+      summary: 내 정보와 로그인 상태 조회
+      description: >-
+        유효한 세션에 해당하는 사용자·역할·소속·허용 지역을 조회합니다.
+        세션이 없거나 만료·폐기됐거나 계정이 비활성 상태이면 401을 반환합니다.
+        반환한 역할 정보와 별개로 각 업무 API에서 기관·지역·배정 권한을 검사합니다.
+      responses:
+        '200':
+          description: 현재 로그인 사용자
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UserResponse'
+        '401':
+          $ref: '#/components/responses/AuthenticationRequired'
+  /auth/logout:
+    post:
+      tags: [Auth]
+      operationId: logout
+      summary: 현재 세션 로그아웃
+      description: >-
+        현재 요청에 사용한 세션만 폐기하고 쿠키를 삭제합니다.
+        같은 계정의 다른 유효 세션은 유지합니다.
+      responses:
+        '204':
+          description: 현재 세션 종료. 응답 본문은 없습니다.
+          headers:
+            Set-Cookie:
+              description: 로그인 쿠키와 같은 이름·경로로 만료시켜 삭제합니다.
+              schema:
+                type: string
+                example: 'session=; Path=/; Max-Age=0; HttpOnly; SameSite=Lax'
+        '401':
+          $ref: '#/components/responses/AuthenticationRequired'
+components:
+  securitySchemes:
+    CookieAuth:
+      type: apiKey
+      in: cookie
+      name: session
+      description: 로그인 성공 시 발급하는 세션 쿠키
+  schemas:
+    LoginRequest:
+      type: object
+      required: [login_id, password]
+      properties:
+        login_id:
+          type: string
+          minLength: 1
+          description: 미리 발급한 계정 ID
+          example: demo_worker
+        password:
+          type: string
+          format: password
+          minLength: 1
+          writeOnly: true
+          description: 계정 비밀번호
+    UserResponse:
+      type: object
+      required:
+        - id
+        - name
+        - role
+        - organization_id
+        - allowed_region_ids
+        - can_process_referrals
+      properties:
+        id:
+          type: string
+          format: uuid
+          description: 사용자 ID
+          example: '00000000-0000-4000-8000-000000000001'
+        name:
+          type: string
+          description: 사용자 이름
+          example: 가상 담당자
+        role:
+          type: string
+          enum: [WORKER, ADMIN]
+          description: 사용자 역할
+        organization_id:
+          type: string
+          format: uuid
+          description: 소속 기관 ID
+          example: '00000000-0000-4000-8000-000000000002'
+        allowed_region_ids:
+          type: array
+          description: 접근을 허용한 지역 ID 목록
+          items:
+            type: string
+            format: uuid
+        can_process_referrals:
+          type: boolean
+          description: 소속 수신기관의 연계 처리 권한
+          example: false
+    ErrorResponse:
+      type: object
+      required: [code, message]
+      properties:
+        code:
+          type: string
+          description: 오류 식별 코드
+        message:
+          type: string
+          description: 화면에서 안내할 오류 내용
+  responses:
+    LoginFailed:
+      description: 계정·비밀번호 불일치 또는 사용 불가능한 계정
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          example:
+            code: AUTH_INVALID_CREDENTIALS
+            message: 아이디 또는 비밀번호를 확인해주세요.
+    AuthenticationRequired:
+      description: 유효한 로그인 세션이 없음
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          example:
+            code: AUTH_REQUIRED
+            message: 로그인이 필요합니다.
+    InvalidRequest:
+      description: 필수 입력 누락 또는 잘못된 입력 형식
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          example:
+            code: INVALID_REQUEST
+            message: 입력 내용을 확인해주세요.

@@ -1,0 +1,3 @@
+# Initial API server packages. Version pins will be set during implementation.
+fastapi
+uvicorn
