@@ -1,30 +1,28 @@
-openapi: 3.0.3
+openapi: 3.1.0
 info:
-  title: 먼저가요 창원 인증 API
-  version: 0.1.0
-  description: >-
-    초기 개발용 API 계약 초안입니다. 로그인·내 정보·로그아웃 API를 정의합니다.
-    현재 main.py와 handler·service는 미구현 상태입니다.
-    세션 쿠키 이름은 session으로 제안하며 만료시간은 인증 구현 시 정합니다.
-    개발 단계에서는 같은 계정의 동시 로그인을 허용합니다.
+  title: 먼저가요 창원 API
+  version: 0.2.0
+  description: R03 대상자 목록·상세·통합 이력을 구현했습니다. 공통 JSON 응답은 data와 error를 포함합니다. 성공 시 error는 null이고 실패 시 data는 null입니다.
+    204는 본문 없이 반환합니다. 개인 자료는 가상이며 R03의 data_mode는 DEMO입니다. 현재 사용자 확인은 세션 쿠키의 해시·만료·폐기·계정 활성 상태를 검사합니다.
+    인증 API 세 개는 후속 구현용 초안입니다. 세션 쿠키 이름 session과 개발 단계 동시 로그인 허용을 기준으로 합니다.
 servers:
-  - url: http://localhost:8000
-    description: 개발 서버 주소 예시
+- url: http://localhost:8000
+  description: 개발 서버 주소 예시
 tags:
-  - name: Auth
-    description: 로그인과 세션 관리
+- name: Auth
+  description: 로그인과 세션 관리. 구현 예정
+- name: Clients
+  description: R03 대상자 목록·상세·통합 이력
 security:
-  - CookieAuth: []
+- CookieAuth: []
 paths:
   /auth/login:
     post:
-      tags: [Auth]
+      tags:
+      - Auth
       operationId: login
       summary: 로그인
-      description: >-
-        계정과 비밀번호를 확인한 뒤 새 세션을 발급합니다.
-        새 로그인은 기존의 다른 유효 세션을 유지합니다.
-        성공 응답의 Set-Cookie로 세션을 전달합니다.
+      description: 계정과 비밀번호를 확인한 뒤 새 세션을 발급합니다. 새 로그인은 기존의 다른 유효 세션을 유지합니다. 성공 응답의 Set-Cookie로 세션을 전달합니다.
       security: []
       requestBody:
         required: true
@@ -40,13 +38,10 @@ paths:
           description: 로그인 성공과 현재 사용자 정보
           headers:
             Set-Cookie:
-              description: >-
-                실제 세션 토큰을 HttpOnly 쿠키로 설정합니다.
-                HTTPS 배포 환경에서는 Secure 속성을 적용합니다.
-                쿠키 만료는 서버의 세션 만료 정책에 맞춥니다.
+              description: 실제 세션 토큰을 HttpOnly 쿠키로 설정합니다. HTTPS 배포 환경에서는 Secure 속성을 적용합니다. 쿠키 만료는 서버의 세션 만료 정책에 맞춥니다.
               schema:
                 type: string
-                example: 'session=example-session-token; Path=/; HttpOnly; SameSite=Lax'
+                example: session=example-session-token; Path=/; HttpOnly; SameSite=Lax
           content:
             application/json:
               schema:
@@ -57,13 +52,12 @@ paths:
           $ref: '#/components/responses/InvalidRequest'
   /auth/me:
     get:
-      tags: [Auth]
+      tags:
+      - Auth
       operationId: getCurrentUser
       summary: 내 정보와 로그인 상태 조회
-      description: >-
-        유효한 세션에 해당하는 사용자·역할·소속·허용 지역을 조회합니다.
-        세션이 없거나 만료·폐기됐거나 계정이 비활성 상태이면 401을 반환합니다.
-        반환한 역할 정보와 별개로 각 업무 API에서 기관·지역·배정 권한을 검사합니다.
+      description: 유효한 세션에 해당하는 사용자·역할·소속·허용 지역을 조회합니다. 세션이 없거나 만료·폐기됐거나 계정이 비활성 상태이면 401을 반환합니다. 반환한 역할 정보와 별개로
+        각 업무 API에서 기관·지역·배정 권한을 검사합니다.
       responses:
         '200':
           description: 현재 로그인 사용자
@@ -75,12 +69,11 @@ paths:
           $ref: '#/components/responses/AuthenticationRequired'
   /auth/logout:
     post:
-      tags: [Auth]
+      tags:
+      - Auth
       operationId: logout
       summary: 현재 세션 로그아웃
-      description: >-
-        현재 요청에 사용한 세션만 폐기하고 쿠키를 삭제합니다.
-        같은 계정의 다른 유효 세션은 유지합니다.
+      description: 현재 요청에 사용한 세션만 폐기하고 쿠키를 삭제합니다. 같은 계정의 다른 유효 세션은 유지합니다.
       responses:
         '204':
           description: 현재 세션 종료. 응답 본문은 없습니다.
@@ -89,9 +82,613 @@ paths:
               description: 로그인 쿠키와 같은 이름·경로로 만료시켜 삭제합니다.
               schema:
                 type: string
-                example: 'session=; Path=/; Max-Age=0; HttpOnly; SameSite=Lax'
+                example: session=; Path=/; Max-Age=0; HttpOnly; SameSite=Lax
         '401':
           $ref: '#/components/responses/AuthenticationRequired'
+  /clients:
+    get:
+      summary: 대상자 목록·검색·필터 조회
+      operationId: listClients
+      parameters:
+      - name: page
+        in: query
+        required: false
+        schema:
+          type: integer
+          minimum: 1
+          description: 1부터 시작하는 페이지 번호
+          default: 1
+          title: Page
+        description: 1부터 시작하는 페이지 번호
+      - name: page_size
+        in: query
+        required: false
+        schema:
+          type: integer
+          maximum: 100
+          minimum: 1
+          description: 페이지당 항목 수
+          default: 20
+          title: Page Size
+        description: 페이지당 항목 수
+      - name: search
+        in: query
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          description: 이름 또는 가상 번호의 부분 검색. 빈 문자열이면 전체 조회
+          title: Search
+        description: 이름 또는 가상 번호의 부분 검색. 빈 문자열이면 전체 조회
+      - name: region_id
+        in: query
+        required: false
+        schema:
+          anyOf:
+          - type: string
+            format: uuid
+          - type: 'null'
+          description: 행정동 ID
+          title: Region Id
+        description: 행정동 ID
+      - name: risk_grade
+        in: query
+        required: false
+        schema:
+          anyOf:
+          - type: string
+            minLength: 1
+          - type: 'null'
+          description: 위험모델의 등급 코드. 등급 경계는 모델 정책을 따름
+          title: Risk Grade
+        description: 위험모델의 등급 코드. 등급 경계는 모델 정책을 따름
+      - name: needs_benefit_review
+        in: query
+        required: false
+        schema:
+          anyOf:
+          - type: boolean
+          - type: 'null'
+          description: NEEDS_REVIEW 혜택 존재 여부. 생략하면 양쪽 모두 조회
+          title: Needs Benefit Review
+        description: NEEDS_REVIEW 혜택 존재 여부. 생략하면 양쪽 모두 조회
+      - name: unchecked_days
+        in: query
+        required: false
+        schema:
+          anyOf:
+          - type: integer
+            minimum: 1
+          - type: 'null'
+          description: 마지막 성공 확인이 조회 시각에서 N일 이전이거나 성공 이력이 없는 대상자
+          title: Unchecked Days
+        description: 마지막 성공 확인이 조회 시각에서 N일 이전이거나 성공 이력이 없는 대상자
+      - name: sort_by
+        in: query
+        required: false
+        schema:
+          enum:
+          - priority
+          - last_success_at
+          - next_check_date
+          type: string
+          description: priority는 현재 표시하는 위험점수 기준
+          default: priority
+          title: Sort By
+        description: priority는 현재 표시하는 위험점수 기준
+      - name: sort_order
+        in: query
+        required: false
+        schema:
+          enum:
+          - asc
+          - desc
+          type: string
+          default: desc
+          title: Sort Order
+      responses:
+        '200':
+          description: 조회 성공
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ClientListResponse'
+              example:
+                data:
+                  items:
+                  - id: 00000000-0000-4000-8000-000000000001
+                    client_number: DEMO-001
+                    name: 가상 어르신 01
+                    age: 75
+                    region:
+                      id: 00000000-0000-4000-8000-000000000004
+                      name: 의창동
+                      district_name: 의창구
+                    workers:
+                    - id: 00000000-0000-4000-8000-000000000002
+                      name: 가상 담당자
+                    household_type: SINGLE
+                    risk:
+                      score: null
+                      grade: null
+                      calculation_status: PENDING
+                      completeness: null
+                      stale: false
+                      calculated_at: null
+                      summary: []
+                    last_success_at: '2026-11-03T09:00:00+09:00'
+                    last_attempt_at: '2026-11-03T09:00:00+09:00'
+                    next_check_date: '2026-11-09'
+                    needs_benefit_review: false
+                    field_info:
+                      age:
+                        status: AVAILABLE
+                        reason: null
+                        source_label: 가상 초기 상담 기록
+                        source_url: null
+                        checked_at: '2026-11-03T09:00:00+09:00'
+                      household_type:
+                        status: AVAILABLE
+                        reason: null
+                        source_label: 가상 초기 상담 기록
+                        source_url: null
+                        checked_at: '2026-11-03T09:00:00+09:00'
+                      risk.score:
+                        status: UNAVAILABLE
+                        reason: 위험점수 계산 결과가 없습니다.
+                        source_label: null
+                        source_url: null
+                        checked_at: null
+                      risk.grade:
+                        status: UNAVAILABLE
+                        reason: 위험점수 계산 결과가 없습니다.
+                        source_label: null
+                        source_url: null
+                        checked_at: null
+                      last_success_at:
+                        status: AVAILABLE
+                        reason: null
+                        source_label: 가상 초기 상담 기록
+                        source_url: null
+                        checked_at: '2026-11-03T09:00:00+09:00'
+                      last_attempt_at:
+                        status: AVAILABLE
+                        reason: null
+                        source_label: 가상 초기 상담 기록
+                        source_url: null
+                        checked_at: '2026-11-03T09:00:00+09:00'
+                      next_check_date:
+                        status: AVAILABLE
+                        reason: null
+                        source_label: 가상 초기 상담 기록
+                        source_url: null
+                        checked_at: '2026-11-03T09:00:00+09:00'
+                  page: 1
+                  page_size: 20
+                  total: 1
+                  queried_at: '2026-11-15T10:00:00+09:00'
+                  data_mode: DEMO
+                error: null
+        '401':
+          $ref: '#/components/responses/AuthenticationRequired'
+        '422':
+          $ref: '#/components/responses/InvalidRequest'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+      tags:
+      - Clients
+      description: CLI01~CLI03. 현재 사용자 정보는 인증 계층에서 받습니다. 기관·기관과 사용자의 허용 지역 교집합·현재 배정을 먼저 적용합니다. 관리자도 개인 열람에 같은 범위
+        검사를 받습니다. 배정은 starts_at이 조회 시각 이하이고 ends_at이 없거나 조회 시각이 ends_at보다 이르면 유효합니다. 필터는 AND로 결합합니다. search는 공백을
+        제거한 검색어의 이름 또는 가상 번호 부분 일치이며 빈 문자열은 전체 조회입니다. needs_benefit_review는 support_status=NEEDS_REVIEW인 연결 혜택이
+        하나 이상 있을 때 true이며 연결 혜택이 없으면 false입니다. unchecked_days는 마지막 성공 확인시각이 queried_at에서 N일을 뺀 시각 이하이거나 성공 이력이 없는
+        경우를 포함합니다. priority는 응답에 표시한 위험점수로 정렬합니다. 모든 정렬에서 null은 마지막이며 동률은 대상자 ID 오름차순입니다. total은 권한과 필터를 적용한 인원수이며
+        빈 결과나 마지막 페이지 이후의 요청도 200과 빈 items를 반환합니다. 목록·total·파생값은 한 요청의 같은 읽기 스냅샷을 사용하고 queried_at은 해당 조회의 기준시각입니다.
+        페이지 요청마다 최신 자료를 조회합니다. 응답 일시는 ISO 8601 한국시간(+09:00), 날짜는 YYYY-MM-DD입니다. 연락 기록이 있으면 occurred_at·created_at·id
+        내림차순의 첫 기록에서 next_check_date를 가져오며 기록이 없으면 null입니다. last_success_at은 SUCCESS만, last_attempt_at은 모든 결과의 가장
+        최근 연락시각입니다. 위험 계산 결과가 없으면 점수·등급·완성여부·계산시각은 null, summary는 빈 배열로 반환합니다. 이전 계산 결과를 표시할 때 최신 입력·모델·실행과의 차이는
+        stale로 알리고 현재 calculation_status를 함께 제공합니다. field_info는 나이·가구형태·위험점수/등급·성공/시도시각·다음 확인일의 상태·출처·확인일을 필드 경로별로
+        제공합니다.
+  /clients/{client_id}:
+    get:
+      summary: 대상자 상세 조회
+      operationId: getClient
+      parameters:
+      - name: client_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+          title: Client Id
+      responses:
+        '200':
+          description: 조회 성공
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ClientDetailResponse'
+              example:
+                data:
+                  id: 00000000-0000-4000-8000-000000000001
+                  client_number: DEMO-001
+                  name: 가상 어르신 01
+                  age: 75
+                  region:
+                    id: 00000000-0000-4000-8000-000000000004
+                    name: 의창동
+                    district_name: 의창구
+                  workers:
+                  - id: 00000000-0000-4000-8000-000000000002
+                    name: 가상 담당자
+                  household_type: SINGLE
+                  risk:
+                    score: null
+                    grade: null
+                    calculation_status: PENDING
+                    completeness: null
+                    stale: false
+                    calculated_at: null
+                    summary: []
+                  last_success_at: '2026-11-03T09:00:00+09:00'
+                  last_attempt_at: '2026-11-03T09:00:00+09:00'
+                  next_check_date: '2026-11-09'
+                  needs_benefit_review: false
+                  field_info:
+                    age:
+                      status: AVAILABLE
+                      reason: null
+                      source_label: 가상 초기 상담 기록
+                      source_url: null
+                      checked_at: '2026-11-03T09:00:00+09:00'
+                    household_type:
+                      status: AVAILABLE
+                      reason: null
+                      source_label: 가상 초기 상담 기록
+                      source_url: null
+                      checked_at: '2026-11-03T09:00:00+09:00'
+                    risk.score:
+                      status: UNAVAILABLE
+                      reason: 위험점수 계산 결과가 없습니다.
+                      source_label: null
+                      source_url: null
+                      checked_at: null
+                    risk.grade:
+                      status: UNAVAILABLE
+                      reason: 위험점수 계산 결과가 없습니다.
+                      source_label: null
+                      source_url: null
+                      checked_at: null
+                    last_success_at:
+                      status: AVAILABLE
+                      reason: null
+                      source_label: 가상 초기 상담 기록
+                      source_url: null
+                      checked_at: '2026-11-03T09:00:00+09:00'
+                    last_attempt_at:
+                      status: AVAILABLE
+                      reason: null
+                      source_label: 가상 초기 상담 기록
+                      source_url: null
+                      checked_at: '2026-11-03T09:00:00+09:00'
+                    next_check_date:
+                      status: AVAILABLE
+                      reason: null
+                      source_label: 가상 초기 상담 기록
+                      source_url: null
+                      checked_at: '2026-11-03T09:00:00+09:00'
+                    birth_date:
+                      status: AVAILABLE
+                      reason: null
+                      source_label: 가상 초기 상담 기록
+                      source_url: null
+                      checked_at: '2026-11-03T09:00:00+09:00'
+                    address:
+                      status: AVAILABLE
+                      reason: null
+                      source_label: 가상 초기 상담 기록
+                      source_url: null
+                      checked_at: '2026-11-03T09:00:00+09:00'
+                    phone_masked:
+                      status: AVAILABLE
+                      reason: null
+                      source_label: 가상 초기 상담 기록
+                      source_url: null
+                      checked_at: '2026-11-03T09:00:00+09:00'
+                    profile.income_band:
+                      status: AVAILABLE
+                      reason: null
+                      source_label: 가상 초기 상담 기록
+                      source_url: null
+                      checked_at: '2026-11-03T09:00:00+09:00'
+                    profile.vulnerability_flags:
+                      status: AVAILABLE
+                      reason: null
+                      source_label: 가상 초기 상담 기록
+                      source_url: null
+                      checked_at: '2026-11-03T09:00:00+09:00'
+                    profile.fall_history:
+                      status: AVAILABLE
+                      reason: null
+                      source_label: 가상 초기 상담 기록
+                      source_url: null
+                      checked_at: '2026-11-03T09:00:00+09:00'
+                    profile.mobility:
+                      status: AVAILABLE
+                      reason: null
+                      source_label: 가상 초기 상담 기록
+                      source_url: null
+                      checked_at: '2026-11-03T09:00:00+09:00'
+                    profile.health_flags:
+                      status: AVAILABLE
+                      reason: null
+                      source_label: 가상 초기 상담 기록
+                      source_url: null
+                      checked_at: '2026-11-03T09:00:00+09:00'
+                    profile.heating_vulnerable:
+                      status: AVAILABLE
+                      reason: null
+                      source_label: 가상 초기 상담 기록
+                      source_url: null
+                      checked_at: '2026-11-03T09:00:00+09:00'
+                    profile.cooling_vulnerable:
+                      status: UNCONFIRMED
+                      reason: 냉방 취약 여부를 아직 확인하지 못했습니다.
+                      source_label: 가상 초기 상담 기록
+                      source_url: null
+                      checked_at: '2026-11-03T09:00:00+09:00'
+                    location:
+                      status: MISSING
+                      reason: 좌표가 등록되지 않았습니다.
+                      source_label: null
+                      source_url: null
+                      checked_at: null
+                  queried_at: '2026-11-15T10:00:00+09:00'
+                  data_mode: DEMO
+                  organization:
+                    id: 00000000-0000-4000-8000-000000000003
+                    name: 가상 돌봄기관
+                  birth_date: '1951-04-12'
+                  address: 창원시 의창구 의창동 가상주소 1
+                  phone_masked: 010-****-0001
+                  location: null
+                  profile:
+                    revision: 1
+                    income_band: GENERAL
+                    vulnerability_flags:
+                    - LIVING_ALONE
+                    fall_history: false
+                    mobility: INDEPENDENT
+                    health_flags: []
+                    cooling_vulnerable: null
+                    heating_vulnerable: false
+                  benefits:
+                  - support_status: GUIDED
+                    resume_status: null
+                    receipt_status: UNKNOWN
+                    receipt_evidence: null
+                    receipt_verified_at: null
+                    client_benefit_id: 00000000-0000-4000-8000-000000000007
+                    benefit_id: 00000000-0000-4000-8000-000000000006
+                    benefit_name: 가상 생활지원 제도
+                    receipt_verified_by: null
+                error: null
+        '401':
+          $ref: '#/components/responses/AuthenticationRequired'
+        '422':
+          $ref: '#/components/responses/InvalidRequest'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+        '404':
+          $ref: '#/components/responses/ClientNotFound'
+      tags:
+      - Clients
+      description: CLI04. 목록과 동일한 기관·지역·현재 배정 범위를 검사하며 권한 밖 대상자와 존재하지 않는 대상자는 모두 404입니다. 기본정보·기본 마스킹 연락처·위치·최신 건강/소득
+        프로필·혜택 지원 상태와 실제 수급 상태를 조회합니다. 휴대전화는 010-****-1234처럼 가운데 부분을 가리며 유선전화도 가운데 부분을 가립니다. 형식을 구분할 수 없으면 전체를 가립니다.
+        프로필은 최신 revision 전체를 사용하고 과거 revision으로 빈 값을 보충하지 않습니다. 프로필 자체가 없으면 profile은 null입니다. 확인한 건강·취약 항목이 없으면
+        빈 배열이고 미확인/누락은 null입니다. benefits는 연결된 제도의 지원·수급 상태이며 연결된 제도가 없으면 빈 배열입니다. UNKNOWN 수급은 미확인 상태입니다. 목록의 공통
+        규칙에 더해 field_info에는 생년월일·주소·마스킹 연락처·좌표·각 프로필 값의 상태와 출처·확인일을 제공합니다. 필드 키는 birth_date, location, profile.health_flags처럼
+        데이터 내부 경로를 사용합니다. AVAILABLE은 확인한 값이며 DB의 KNOWN 상태에 대응합니다. MISSING은 누락, UNCONFIRMED는 미확인, UNAVAILABLE은 계산/원천자료
+        이용 불가, RESTRICTED는 필드 열람 제한, NOT_APPLICABLE은 해당 없음입니다. 누락·미확인·이용 불가·열람 제한·해당 없음은 값을 null로 반환하고 reason에 이유를
+        제공합니다. 날짜·일시·가상 자료 표시와 점수 규칙은 목록과 같습니다.
+  /clients/{client_id}/history:
+    get:
+      summary: 대상자 사례관리 통합 이력 조회
+      operationId: getClientHistory
+      parameters:
+      - name: client_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+          title: Client Id
+      - name: page
+        in: query
+        required: false
+        schema:
+          type: integer
+          minimum: 1
+          description: 1부터 시작하는 페이지 번호
+          default: 1
+          title: Page
+        description: 1부터 시작하는 페이지 번호
+      - name: page_size
+        in: query
+        required: false
+        schema:
+          type: integer
+          maximum: 100
+          minimum: 1
+          description: 페이지당 항목 수
+          default: 20
+          title: Page Size
+        description: 페이지당 항목 수
+      - name: event_type
+        in: query
+        required: false
+        schema:
+          anyOf:
+          - enum:
+            - CONTACT
+            - BENEFIT
+            - REFERRAL_REQUEST
+            - REFERRAL_STATUS_CHANGE
+            type: string
+          - type: 'null'
+          title: Event Type
+      - name: from_date
+        in: query
+        required: false
+        schema:
+          anyOf:
+          - type: string
+            format: date
+          - type: 'null'
+          description: 시작 한국 날짜. 해당 날짜 포함
+          title: From Date
+        description: 시작 한국 날짜. 해당 날짜 포함
+      - name: to_date
+        in: query
+        required: false
+        schema:
+          anyOf:
+          - type: string
+            format: date
+          - type: 'null'
+          description: 종료 한국 날짜. 해당 날짜 포함
+          title: To Date
+        description: 종료 한국 날짜. 해당 날짜 포함
+      responses:
+        '200':
+          description: 조회 성공
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ClientHistoryResponse'
+              example:
+                data:
+                  items:
+                  - event_id: 00000000-0000-4000-8000-000000000012
+                    event_type: REFERRAL_STATUS_CHANGE
+                    occurred_at: '2026-11-06T10:00:00+09:00'
+                    worker:
+                      id: 00000000-0000-4000-8000-000000000002
+                      name: 가상 담당자
+                    summary: 기관 연계 처리 완료
+                    detail:
+                      referral_id: 00000000-0000-4000-8000-000000000008
+                      contact_id: 00000000-0000-4000-8000-000000000005
+                      target_organization:
+                        id: 00000000-0000-4000-8000-000000000013
+                        name: 가상 연계기관
+                      request_reason: 생활지원 상담 필요
+                      requested_action: 신청 절차 상담
+                      due_date: '2026-11-10'
+                      current_status: COMPLETED
+                      accepted_at: '2026-11-05T10:00:00+09:00'
+                      completed_at: '2026-11-06T10:00:00+09:00'
+                      rejected_at: null
+                      current_result: 상담 완료
+                      delivery_status: NOT_SENT
+                      from_status: IN_PROGRESS
+                      to_status: COMPLETED
+                      change_reason: null
+                      change_result: 상담 완료
+                  - event_id: 00000000-0000-4000-8000-000000000011
+                    event_type: BENEFIT
+                    occurred_at: '2026-11-05T09:00:00+09:00'
+                    worker:
+                      id: 00000000-0000-4000-8000-000000000002
+                      name: 가상 담당자
+                    summary: 생활지원 제도 안내
+                    detail:
+                      client_benefit_id: 00000000-0000-4000-8000-000000000007
+                      benefit_id: 00000000-0000-4000-8000-000000000006
+                      benefit_name: 가상 생활지원 제도
+                      benefit_version_id: 00000000-0000-4000-8000-000000000010
+                      contact_id: null
+                      action: GUIDED
+                      before_state:
+                        support_status: NEEDS_REVIEW
+                        resume_status: null
+                        receipt_status: UNKNOWN
+                        receipt_evidence: null
+                        receipt_verified_at: null
+                      after_state:
+                        support_status: GUIDED
+                        resume_status: null
+                        receipt_status: UNKNOWN
+                        receipt_evidence: null
+                        receipt_verified_at: null
+                      reason: null
+                  - event_id: 00000000-0000-4000-8000-000000000008
+                    event_type: REFERRAL_REQUEST
+                    occurred_at: '2026-11-04T09:00:00+09:00'
+                    worker:
+                      id: 00000000-0000-4000-8000-000000000002
+                      name: 가상 담당자
+                    summary: 생활지원 상담 연계 요청
+                    detail:
+                      referral_id: 00000000-0000-4000-8000-000000000008
+                      contact_id: 00000000-0000-4000-8000-000000000005
+                      target_organization:
+                        id: 00000000-0000-4000-8000-000000000013
+                        name: 가상 연계기관
+                      request_reason: 생활지원 상담 필요
+                      requested_action: 신청 절차 상담
+                      due_date: '2026-11-10'
+                      current_status: COMPLETED
+                      accepted_at: '2026-11-05T10:00:00+09:00'
+                      completed_at: '2026-11-06T10:00:00+09:00'
+                      rejected_at: null
+                      current_result: 상담 완료
+                      delivery_status: NOT_SENT
+                  - event_id: 00000000-0000-4000-8000-000000000005
+                    event_type: CONTACT
+                    occurred_at: '2026-11-03T09:00:00+09:00'
+                    worker:
+                      id: 00000000-0000-4000-8000-000000000002
+                      name: 가상 담당자
+                    summary: 방문 확인 완료
+                    detail:
+                      channel: VISIT
+                      result: SUCCESS
+                      memo: 가상 방문 상담 기록
+                      crisis_detected: false
+                      next_check_date: '2026-11-09'
+                      no_action_reason: null
+                      plan_id: null
+                      plan_version: null
+                      checklist_version_id: 00000000-0000-4000-8000-000000000009
+                      answers:
+                      - question_id: 00000000-0000-4000-8000-000000000014
+                        question_text: 최근 낙상 여부
+                        answer_code: NO_RISK
+                        note: null
+                  page: 1
+                  page_size: 20
+                  total: 4
+                  queried_at: '2026-11-15T10:00:00+09:00'
+                  data_mode: DEMO
+                error: null
+        '401':
+          $ref: '#/components/responses/AuthenticationRequired'
+        '422':
+          $ref: '#/components/responses/InvalidRequest'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+        '404':
+          $ref: '#/components/responses/ClientNotFound'
+      tags:
+      - Clients
+      description: CLI05. 대상자의 현재 열람 권한을 검사하고 방문·전화·혜택 지원·기관 연계 요청·연계 상태 변경을 함께 조회합니다. 연락은 contact_records.occurred_at,
+        혜택은 benefit_actions.occurred_at, 연계 요청은 referrals.requested_at, 연계 변경은 referral_events.occurred_at을 사용합니다.
+        최초 연계 생성 이벤트(from_status가 null)는 요청과 중복되므로 제외합니다. occurred_at 내림차순, event_type 오름차순, event_id 오름차순으로 정렬합니다.
+        event_id는 해당 종류의 원본 행 ID이며 종류와 ID의 조합으로 이벤트를 식별합니다. 날짜 필터는 한국 날짜 양끝을 포함하며 시작일 00시 이상, 종료일 다음 날 00시 미만으로
+        적용합니다. 시작일이 종료일보다 늦으면 422입니다. 각 이벤트의 detail에 관련 기록 상세를 포함합니다. 연락의 next_check_date는 성공·실패·거부 모두 필수입니다. 혜택
+        before_state/after_state는 당시 값이며 연계 from_status/to_status/change_result는 당시 변경입니다. 연계 current_status/current_result와
+        처리시각은 조회 시각의 현재 요청 상태입니다. 연계는 내부 가상 처리로 delivery_status는 NOT_SENT입니다. 페이지·권한·조회 기준시각·공통 응답 규칙은 목록과 같습니다.
 components:
   securitySchemes:
     CookieAuth:
@@ -100,9 +697,859 @@ components:
       name: session
       description: 로그인 성공 시 발급하는 세션 쿠키
   schemas:
+    BenefitHistoryDetail:
+      properties:
+        client_benefit_id:
+          type: string
+          format: uuid
+          title: Client Benefit Id
+        benefit_id:
+          type: string
+          format: uuid
+          title: Benefit Id
+        benefit_name:
+          type: string
+          title: Benefit Name
+        benefit_version_id:
+          type: string
+          format: uuid
+          title: Benefit Version Id
+        contact_id:
+          anyOf:
+          - type: string
+            format: uuid
+          - type: 'null'
+          title: Contact Id
+        action:
+          type: string
+          enum:
+          - DISCOVERED
+          - GUIDED
+          - DOCUMENTS_PREPARED
+          - APPLICATION_ASSISTED
+          - APPLIED
+          - RECEIPT_VERIFIED
+          - DEFERRED
+          - RESUMED
+          title: Action
+        before_state:
+          $ref: '#/components/schemas/BenefitState'
+        after_state:
+          $ref: '#/components/schemas/BenefitState'
+        reason:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Reason
+      type: object
+      required:
+      - client_benefit_id
+      - benefit_id
+      - benefit_name
+      - benefit_version_id
+      - contact_id
+      - action
+      - before_state
+      - after_state
+      - reason
+      title: BenefitHistoryDetail
+    BenefitHistoryEvent:
+      properties:
+        event_id:
+          type: string
+          format: uuid
+          title: Event Id
+        occurred_at:
+          type: string
+          format: date-time
+          title: Occurred At
+        worker:
+          $ref: '#/components/schemas/WorkerInfo'
+        summary:
+          type: string
+          title: Summary
+        event_type:
+          type: string
+          const: BENEFIT
+          title: Event Type
+        detail:
+          $ref: '#/components/schemas/BenefitHistoryDetail'
+      type: object
+      required:
+      - event_id
+      - occurred_at
+      - worker
+      - summary
+      - event_type
+      - detail
+      title: BenefitHistoryEvent
+    BenefitState:
+      properties:
+        support_status:
+          type: string
+          enum:
+          - NEEDS_REVIEW
+          - GUIDED
+          - DOCUMENTS_PREPARING
+          - APPLICATION_ASSISTED
+          - APPLIED
+          - DEFERRED
+          title: Support Status
+        resume_status:
+          anyOf:
+          - type: string
+            enum:
+            - NEEDS_REVIEW
+            - GUIDED
+            - DOCUMENTS_PREPARING
+            - APPLICATION_ASSISTED
+            - APPLIED
+            - DEFERRED
+          - type: 'null'
+          title: Resume Status
+        receipt_status:
+          type: string
+          enum:
+          - UNKNOWN
+          - CONFIRMED
+          - NOT_RECEIVING
+          title: Receipt Status
+        receipt_evidence:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Receipt Evidence
+        receipt_verified_at:
+          anyOf:
+          - type: string
+            format: date-time
+          - type: 'null'
+          title: Receipt Verified At
+      type: object
+      required:
+      - support_status
+      - resume_status
+      - receipt_status
+      - receipt_evidence
+      - receipt_verified_at
+      title: BenefitState
+    ClientBenefit:
+      properties:
+        support_status:
+          type: string
+          enum:
+          - NEEDS_REVIEW
+          - GUIDED
+          - DOCUMENTS_PREPARING
+          - APPLICATION_ASSISTED
+          - APPLIED
+          - DEFERRED
+          title: Support Status
+        resume_status:
+          anyOf:
+          - type: string
+            enum:
+            - NEEDS_REVIEW
+            - GUIDED
+            - DOCUMENTS_PREPARING
+            - APPLICATION_ASSISTED
+            - APPLIED
+            - DEFERRED
+          - type: 'null'
+          title: Resume Status
+        receipt_status:
+          type: string
+          enum:
+          - UNKNOWN
+          - CONFIRMED
+          - NOT_RECEIVING
+          title: Receipt Status
+        receipt_evidence:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Receipt Evidence
+        receipt_verified_at:
+          anyOf:
+          - type: string
+            format: date-time
+          - type: 'null'
+          title: Receipt Verified At
+        client_benefit_id:
+          type: string
+          format: uuid
+          title: Client Benefit Id
+        benefit_id:
+          type: string
+          format: uuid
+          title: Benefit Id
+        benefit_name:
+          type: string
+          title: Benefit Name
+        receipt_verified_by:
+          anyOf:
+          - $ref: '#/components/schemas/WorkerInfo'
+          - type: 'null'
+      type: object
+      required:
+      - support_status
+      - resume_status
+      - receipt_status
+      - receipt_evidence
+      - receipt_verified_at
+      - client_benefit_id
+      - benefit_id
+      - benefit_name
+      - receipt_verified_by
+      title: ClientBenefit
+    ClientDetailData:
+      properties:
+        id:
+          type: string
+          format: uuid
+          title: Id
+        client_number:
+          type: string
+          title: Client Number
+        name:
+          type: string
+          title: Name
+        age:
+          anyOf:
+          - type: integer
+            minimum: 0.0
+          - type: 'null'
+          title: Age
+          description: 조회 한국 날짜 기준 만 나이
+        region:
+          $ref: '#/components/schemas/RegionInfo'
+        workers:
+          items:
+            $ref: '#/components/schemas/WorkerInfo'
+          type: array
+          title: Workers
+          description: 조회 시각에 유효한 배정 담당자. ID 오름차순
+        household_type:
+          anyOf:
+          - type: string
+            enum:
+            - SINGLE
+            - ELDERLY_COUPLE
+            - WITH_FAMILY
+          - type: 'null'
+          title: Household Type
+        risk:
+          $ref: '#/components/schemas/RiskSummary'
+        last_success_at:
+          anyOf:
+          - type: string
+            format: date-time
+          - type: 'null'
+          title: Last Success At
+        last_attempt_at:
+          anyOf:
+          - type: string
+            format: date-time
+          - type: 'null'
+          title: Last Attempt At
+        next_check_date:
+          anyOf:
+          - type: string
+            format: date
+          - type: 'null'
+          title: Next Check Date
+          description: 최신 연락의 다음 확인일. 연락 기록이 없으면 null
+        needs_benefit_review:
+          type: boolean
+          title: Needs Benefit Review
+        field_info:
+          additionalProperties:
+            $ref: '#/components/schemas/FieldInfo'
+          type: object
+          title: Field Info
+          description: 자료 상태·출처·확인일. 상세에서 같은 규칙 사용
+        queried_at:
+          type: string
+          format: date-time
+          title: Queried At
+        data_mode:
+          type: string
+          const: DEMO
+          title: Data Mode
+          default: DEMO
+        organization:
+          $ref: '#/components/schemas/OrganizationInfo'
+        birth_date:
+          anyOf:
+          - type: string
+            format: date
+          - type: 'null'
+          title: Birth Date
+        address:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Address
+        phone_masked:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Phone Masked
+        location:
+          anyOf:
+          - $ref: '#/components/schemas/LocationInfo'
+          - type: 'null'
+        profile:
+          anyOf:
+          - $ref: '#/components/schemas/ClientProfile'
+          - type: 'null'
+        benefits:
+          items:
+            $ref: '#/components/schemas/ClientBenefit'
+          type: array
+          title: Benefits
+      type: object
+      required:
+      - id
+      - client_number
+      - name
+      - age
+      - region
+      - workers
+      - household_type
+      - risk
+      - last_success_at
+      - last_attempt_at
+      - next_check_date
+      - needs_benefit_review
+      - field_info
+      - queried_at
+      - organization
+      - birth_date
+      - address
+      - phone_masked
+      - location
+      - profile
+      - benefits
+      title: ClientDetailData
+    ClientDetailResponse:
+      properties:
+        data:
+          $ref: '#/components/schemas/ClientDetailData'
+        error:
+          type: 'null'
+          title: Error
+      type: object
+      required:
+      - data
+      - error
+      title: ClientDetailResponse
+      description: 대상자 상세 응답입니다.
+    ClientHistoryData:
+      properties:
+        items:
+          items:
+            oneOf:
+            - $ref: '#/components/schemas/ContactHistoryEvent'
+            - $ref: '#/components/schemas/BenefitHistoryEvent'
+            - $ref: '#/components/schemas/ReferralRequestHistoryEvent'
+            - $ref: '#/components/schemas/ReferralStatusHistoryEvent'
+            discriminator:
+              propertyName: event_type
+              mapping:
+                BENEFIT: '#/components/schemas/BenefitHistoryEvent'
+                CONTACT: '#/components/schemas/ContactHistoryEvent'
+                REFERRAL_REQUEST: '#/components/schemas/ReferralRequestHistoryEvent'
+                REFERRAL_STATUS_CHANGE: '#/components/schemas/ReferralStatusHistoryEvent'
+          type: array
+          title: Items
+        page:
+          type: integer
+          minimum: 1.0
+          title: Page
+        page_size:
+          type: integer
+          maximum: 100.0
+          minimum: 1.0
+          title: Page Size
+        total:
+          type: integer
+          minimum: 0.0
+          title: Total
+          description: 권한과 모든 필터를 적용한 전체 항목 수
+        queried_at:
+          type: string
+          format: date-time
+          title: Queried At
+        data_mode:
+          type: string
+          const: DEMO
+          title: Data Mode
+          default: DEMO
+      type: object
+      required:
+      - items
+      - page
+      - page_size
+      - total
+      - queried_at
+      title: ClientHistoryData
+    ClientHistoryResponse:
+      properties:
+        data:
+          $ref: '#/components/schemas/ClientHistoryData'
+        error:
+          type: 'null'
+          title: Error
+      type: object
+      required:
+      - data
+      - error
+      title: ClientHistoryResponse
+      description: 대상자 통합 이력 응답입니다.
+    ClientListData:
+      properties:
+        items:
+          items:
+            $ref: '#/components/schemas/ClientListItem'
+          type: array
+          title: Items
+        page:
+          type: integer
+          minimum: 1.0
+          title: Page
+        page_size:
+          type: integer
+          maximum: 100.0
+          minimum: 1.0
+          title: Page Size
+        total:
+          type: integer
+          minimum: 0.0
+          title: Total
+          description: 권한과 모든 필터를 적용한 전체 항목 수
+        queried_at:
+          type: string
+          format: date-time
+          title: Queried At
+        data_mode:
+          type: string
+          const: DEMO
+          title: Data Mode
+          default: DEMO
+      type: object
+      required:
+      - items
+      - page
+      - page_size
+      - total
+      - queried_at
+      title: ClientListData
+    ClientListItem:
+      properties:
+        id:
+          type: string
+          format: uuid
+          title: Id
+        client_number:
+          type: string
+          title: Client Number
+        name:
+          type: string
+          title: Name
+        age:
+          anyOf:
+          - type: integer
+            minimum: 0.0
+          - type: 'null'
+          title: Age
+          description: 조회 한국 날짜 기준 만 나이
+        region:
+          $ref: '#/components/schemas/RegionInfo'
+        workers:
+          items:
+            $ref: '#/components/schemas/WorkerInfo'
+          type: array
+          title: Workers
+          description: 조회 시각에 유효한 배정 담당자. ID 오름차순
+        household_type:
+          anyOf:
+          - type: string
+            enum:
+            - SINGLE
+            - ELDERLY_COUPLE
+            - WITH_FAMILY
+          - type: 'null'
+          title: Household Type
+        risk:
+          $ref: '#/components/schemas/RiskSummary'
+        last_success_at:
+          anyOf:
+          - type: string
+            format: date-time
+          - type: 'null'
+          title: Last Success At
+        last_attempt_at:
+          anyOf:
+          - type: string
+            format: date-time
+          - type: 'null'
+          title: Last Attempt At
+        next_check_date:
+          anyOf:
+          - type: string
+            format: date
+          - type: 'null'
+          title: Next Check Date
+          description: 최신 연락의 다음 확인일. 연락 기록이 없으면 null
+        needs_benefit_review:
+          type: boolean
+          title: Needs Benefit Review
+        field_info:
+          additionalProperties:
+            $ref: '#/components/schemas/FieldInfo'
+          type: object
+          title: Field Info
+          description: 자료 상태·출처·확인일. 상세에서 같은 규칙 사용
+      type: object
+      required:
+      - id
+      - client_number
+      - name
+      - age
+      - region
+      - workers
+      - household_type
+      - risk
+      - last_success_at
+      - last_attempt_at
+      - next_check_date
+      - needs_benefit_review
+      - field_info
+      title: ClientListItem
+    ClientListResponse:
+      properties:
+        data:
+          $ref: '#/components/schemas/ClientListData'
+        error:
+          type: 'null'
+          title: Error
+      type: object
+      required:
+      - data
+      - error
+      title: ClientListResponse
+      description: 대상자 목록 응답입니다.
+    ClientProfile:
+      properties:
+        revision:
+          type: integer
+          minimum: 1.0
+          title: Revision
+        income_band:
+          anyOf:
+          - type: string
+            enum:
+            - LOW_INCOME
+            - GENERAL
+          - type: 'null'
+          title: Income Band
+        vulnerability_flags:
+          anyOf:
+          - items:
+              type: string
+              enum:
+              - LIVING_ALONE
+              - LOW_INCOME
+              - LIMITED_SUPPORT
+              - HOUSING_ISSUE
+            type: array
+          - type: 'null'
+          title: Vulnerability Flags
+        fall_history:
+          anyOf:
+          - type: boolean
+          - type: 'null'
+          title: Fall History
+        mobility:
+          anyOf:
+          - type: string
+            enum:
+            - INDEPENDENT
+            - WALKING_AID
+            - NEEDS_ASSISTANCE
+          - type: 'null'
+          title: Mobility
+        health_flags:
+          anyOf:
+          - items:
+              type: string
+              enum:
+              - HYPERTENSION
+              - DIABETES
+              - ARTHRITIS
+              - HEART_DISEASE
+            type: array
+          - type: 'null'
+          title: Health Flags
+        cooling_vulnerable:
+          anyOf:
+          - type: boolean
+          - type: 'null'
+          title: Cooling Vulnerable
+        heating_vulnerable:
+          anyOf:
+          - type: boolean
+          - type: 'null'
+          title: Heating Vulnerable
+      type: object
+      required:
+      - revision
+      - income_band
+      - vulnerability_flags
+      - fall_history
+      - mobility
+      - health_flags
+      - cooling_vulnerable
+      - heating_vulnerable
+      title: ClientProfile
+      description: 최신 revision 전체를 사용하며 과거 revision의 값으로 보충하지 않습니다.
+    ContactAnswer:
+      properties:
+        question_id:
+          type: string
+          format: uuid
+          title: Question Id
+        question_text:
+          type: string
+          title: Question Text
+        answer_code:
+          type: string
+          enum:
+          - RISK_FOUND
+          - NO_RISK
+          - UNCONFIRMED
+          - NOT_APPLICABLE
+          title: Answer Code
+        note:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Note
+      type: object
+      required:
+      - question_id
+      - question_text
+      - answer_code
+      - note
+      title: ContactAnswer
+    ContactHistoryDetail:
+      properties:
+        channel:
+          type: string
+          enum:
+          - VISIT
+          - PHONE
+          title: Channel
+        result:
+          type: string
+          enum:
+          - SUCCESS
+          - FAILED
+          - REFUSED
+          title: Result
+        memo:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Memo
+        crisis_detected:
+          anyOf:
+          - type: boolean
+          - type: 'null'
+          title: Crisis Detected
+        next_check_date:
+          type: string
+          format: date
+          title: Next Check Date
+          description: 성공·실패·거부 모두 필수
+        no_action_reason:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: No Action Reason
+        plan_id:
+          anyOf:
+          - type: string
+            format: uuid
+          - type: 'null'
+          title: Plan Id
+        plan_version:
+          anyOf:
+          - type: integer
+            minimum: 1.0
+          - type: 'null'
+          title: Plan Version
+        checklist_version_id:
+          type: string
+          format: uuid
+          title: Checklist Version Id
+        answers:
+          items:
+            $ref: '#/components/schemas/ContactAnswer'
+          type: array
+          title: Answers
+      type: object
+      required:
+      - channel
+      - result
+      - memo
+      - crisis_detected
+      - next_check_date
+      - no_action_reason
+      - plan_id
+      - plan_version
+      - checklist_version_id
+      - answers
+      title: ContactHistoryDetail
+    ContactHistoryEvent:
+      properties:
+        event_id:
+          type: string
+          format: uuid
+          title: Event Id
+        occurred_at:
+          type: string
+          format: date-time
+          title: Occurred At
+        worker:
+          $ref: '#/components/schemas/WorkerInfo'
+        summary:
+          type: string
+          title: Summary
+        event_type:
+          type: string
+          const: CONTACT
+          title: Event Type
+        detail:
+          $ref: '#/components/schemas/ContactHistoryDetail'
+      type: object
+      required:
+      - event_id
+      - occurred_at
+      - worker
+      - summary
+      - event_type
+      - detail
+      title: ContactHistoryEvent
+    ErrorBody:
+      properties:
+        code:
+          type: string
+          title: Code
+        message:
+          type: string
+          title: Message
+        details:
+          items:
+            $ref: '#/components/schemas/ErrorDetail'
+          type: array
+          title: Details
+      type: object
+      required:
+      - code
+      - message
+      - details
+      title: ErrorBody
+    ErrorDetail:
+      properties:
+        field:
+          type: string
+          title: Field
+        message:
+          type: string
+          title: Message
+      type: object
+      required:
+      - field
+      - message
+      title: ErrorDetail
+    ErrorResponse:
+      properties:
+        data:
+          type: 'null'
+          title: Data
+        error:
+          $ref: '#/components/schemas/ErrorBody'
+      type: object
+      required:
+      - data
+      - error
+      title: ErrorResponse
+    FieldInfo:
+      properties:
+        status:
+          type: string
+          enum:
+          - AVAILABLE
+          - MISSING
+          - UNCONFIRMED
+          - UNAVAILABLE
+          - RESTRICTED
+          - NOT_APPLICABLE
+          title: Status
+        reason:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Reason
+        source_label:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Source Label
+        source_url:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Source Url
+        checked_at:
+          anyOf:
+          - type: string
+            format: date-time
+          - type: 'null'
+          title: Checked At
+      type: object
+      required:
+      - status
+      - reason
+      - source_label
+      - source_url
+      - checked_at
+      title: FieldInfo
+      description: 키는 age, profile.health_flags 등 응답 데이터 내부의 필드 경로입니다.
+    LocationInfo:
+      properties:
+        latitude:
+          type: number
+          maximum: 90.0
+          minimum: -90.0
+          title: Latitude
+        longitude:
+          type: number
+          maximum: 180.0
+          minimum: -180.0
+          title: Longitude
+      type: object
+      required:
+      - latitude
+      - longitude
+      title: LocationInfo
     LoginRequest:
       type: object
-      required: [login_id, password]
+      required:
+      - login_id
+      - password
       properties:
         login_id:
           type: string
@@ -115,34 +1562,365 @@ components:
           minLength: 1
           writeOnly: true
           description: 계정 비밀번호
-    UserResponse:
+    OrganizationInfo:
+      properties:
+        id:
+          type: string
+          format: uuid
+          title: Id
+        name:
+          type: string
+          title: Name
       type: object
       required:
-        - id
-        - name
-        - role
-        - organization_id
-        - allowed_region_ids
-        - can_process_referrals
+      - id
+      - name
+      title: OrganizationInfo
+    ReferralHistoryDetail:
+      properties:
+        referral_id:
+          type: string
+          format: uuid
+          title: Referral Id
+        contact_id:
+          type: string
+          format: uuid
+          title: Contact Id
+        target_organization:
+          $ref: '#/components/schemas/OrganizationInfo'
+        request_reason:
+          type: string
+          title: Request Reason
+        requested_action:
+          type: string
+          title: Requested Action
+        due_date:
+          anyOf:
+          - type: string
+            format: date
+          - type: 'null'
+          title: Due Date
+        current_status:
+          type: string
+          enum:
+          - REQUESTED
+          - IN_PROGRESS
+          - COMPLETED
+          - REJECTED
+          title: Current Status
+          description: 조회 시각의 현재 상태
+        accepted_at:
+          anyOf:
+          - type: string
+            format: date-time
+          - type: 'null'
+          title: Accepted At
+        completed_at:
+          anyOf:
+          - type: string
+            format: date-time
+          - type: 'null'
+          title: Completed At
+        rejected_at:
+          anyOf:
+          - type: string
+            format: date-time
+          - type: 'null'
+          title: Rejected At
+        current_result:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Current Result
+          description: 조회 시각의 처리 결과 또는 반려 사유
+        delivery_status:
+          type: string
+          const: NOT_SENT
+          title: Delivery Status
+          default: NOT_SENT
+      type: object
+      required:
+      - referral_id
+      - contact_id
+      - target_organization
+      - request_reason
+      - requested_action
+      - due_date
+      - current_status
+      - accepted_at
+      - completed_at
+      - rejected_at
+      - current_result
+      title: ReferralHistoryDetail
+    ReferralRequestHistoryEvent:
+      properties:
+        event_id:
+          type: string
+          format: uuid
+          title: Event Id
+        occurred_at:
+          type: string
+          format: date-time
+          title: Occurred At
+        worker:
+          $ref: '#/components/schemas/WorkerInfo'
+        summary:
+          type: string
+          title: Summary
+        event_type:
+          type: string
+          const: REFERRAL_REQUEST
+          title: Event Type
+        detail:
+          $ref: '#/components/schemas/ReferralHistoryDetail'
+      type: object
+      required:
+      - event_id
+      - occurred_at
+      - worker
+      - summary
+      - event_type
+      - detail
+      title: ReferralRequestHistoryEvent
+    ReferralStatusHistoryDetail:
+      properties:
+        referral_id:
+          type: string
+          format: uuid
+          title: Referral Id
+        contact_id:
+          type: string
+          format: uuid
+          title: Contact Id
+        target_organization:
+          $ref: '#/components/schemas/OrganizationInfo'
+        request_reason:
+          type: string
+          title: Request Reason
+        requested_action:
+          type: string
+          title: Requested Action
+        due_date:
+          anyOf:
+          - type: string
+            format: date
+          - type: 'null'
+          title: Due Date
+        current_status:
+          type: string
+          enum:
+          - REQUESTED
+          - IN_PROGRESS
+          - COMPLETED
+          - REJECTED
+          title: Current Status
+          description: 조회 시각의 현재 상태
+        accepted_at:
+          anyOf:
+          - type: string
+            format: date-time
+          - type: 'null'
+          title: Accepted At
+        completed_at:
+          anyOf:
+          - type: string
+            format: date-time
+          - type: 'null'
+          title: Completed At
+        rejected_at:
+          anyOf:
+          - type: string
+            format: date-time
+          - type: 'null'
+          title: Rejected At
+        current_result:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Current Result
+          description: 조회 시각의 처리 결과 또는 반려 사유
+        delivery_status:
+          type: string
+          const: NOT_SENT
+          title: Delivery Status
+          default: NOT_SENT
+        from_status:
+          type: string
+          enum:
+          - REQUESTED
+          - IN_PROGRESS
+          - COMPLETED
+          - REJECTED
+          title: From Status
+        to_status:
+          type: string
+          enum:
+          - REQUESTED
+          - IN_PROGRESS
+          - COMPLETED
+          - REJECTED
+          title: To Status
+        change_reason:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Change Reason
+        change_result:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Change Result
+      type: object
+      required:
+      - referral_id
+      - contact_id
+      - target_organization
+      - request_reason
+      - requested_action
+      - due_date
+      - current_status
+      - accepted_at
+      - completed_at
+      - rejected_at
+      - current_result
+      - from_status
+      - to_status
+      - change_reason
+      - change_result
+      title: ReferralStatusHistoryDetail
+    ReferralStatusHistoryEvent:
+      properties:
+        event_id:
+          type: string
+          format: uuid
+          title: Event Id
+        occurred_at:
+          type: string
+          format: date-time
+          title: Occurred At
+        worker:
+          $ref: '#/components/schemas/WorkerInfo'
+        summary:
+          type: string
+          title: Summary
+        event_type:
+          type: string
+          const: REFERRAL_STATUS_CHANGE
+          title: Event Type
+        detail:
+          $ref: '#/components/schemas/ReferralStatusHistoryDetail'
+      type: object
+      required:
+      - event_id
+      - occurred_at
+      - worker
+      - summary
+      - event_type
+      - detail
+      title: ReferralStatusHistoryEvent
+    RegionInfo:
+      properties:
+        id:
+          type: string
+          format: uuid
+          title: Id
+        name:
+          type: string
+          title: Name
+        district_name:
+          type: string
+          title: District Name
+      type: object
+      required:
+      - id
+      - name
+      - district_name
+      title: RegionInfo
+    RiskSummary:
+      properties:
+        score:
+          anyOf:
+          - type: number
+          - type: 'null'
+          title: Score
+        grade:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Grade
+        calculation_status:
+          type: string
+          enum:
+          - PENDING
+          - RUNNING
+          - COMPLETE
+          - INCOMPLETE
+          - FAILED
+          title: Calculation Status
+        completeness:
+          anyOf:
+          - type: string
+            enum:
+            - COMPLETE
+            - INCOMPLETE
+          - type: 'null'
+          title: Completeness
+        stale:
+          type: boolean
+          title: Stale
+          description: 표시한 결과가 최신 입력·모델·실행과 맞지 않으면 true
+        calculated_at:
+          anyOf:
+          - type: string
+            format: date-time
+          - type: 'null'
+          title: Calculated At
+        summary:
+          items:
+            type: string
+          type: array
+          title: Summary
+          description: 표시한 위험결과의 근거 요약. 계산 결과가 없으면 빈 배열
+      type: object
+      required:
+      - score
+      - grade
+      - calculation_status
+      - completeness
+      - stale
+      - calculated_at
+      - summary
+      title: RiskSummary
+    UserData:
+      type: object
+      required:
+      - id
+      - name
+      - role
+      - organization_id
+      - allowed_region_ids
+      - can_process_referrals
       properties:
         id:
           type: string
           format: uuid
           description: 사용자 ID
-          example: '00000000-0000-4000-8000-000000000001'
+          example: 00000000-0000-4000-8000-000000000001
         name:
           type: string
           description: 사용자 이름
           example: 가상 담당자
         role:
           type: string
-          enum: [WORKER, ADMIN]
+          enum:
+          - WORKER
+          - ADMIN
           description: 사용자 역할
         organization_id:
           type: string
           format: uuid
           description: 소속 기관 ID
-          example: '00000000-0000-4000-8000-000000000002'
+          example: 00000000-0000-4000-8000-000000000002
         allowed_region_ids:
           type: array
           description: 접근을 허용한 지역 ID 목록
@@ -153,16 +1931,30 @@ components:
           type: boolean
           description: 소속 수신기관의 연계 처리 권한
           example: false
-    ErrorResponse:
+    UserResponse:
       type: object
-      required: [code, message]
+      required:
+      - data
+      - error
       properties:
-        code:
+        data:
+          $ref: '#/components/schemas/UserData'
+        error:
+          type: 'null'
+    WorkerInfo:
+      properties:
+        id:
           type: string
-          description: 오류 식별 코드
-        message:
+          format: uuid
+          title: Id
+        name:
           type: string
-          description: 화면에서 안내할 오류 내용
+          title: Name
+      type: object
+      required:
+      - id
+      - name
+      title: WorkerInfo
   responses:
     LoginFailed:
       description: 계정·비밀번호 불일치 또는 사용 불가능한 계정
@@ -171,8 +1963,11 @@ components:
           schema:
             $ref: '#/components/schemas/ErrorResponse'
           example:
-            code: AUTH_INVALID_CREDENTIALS
-            message: 아이디 또는 비밀번호를 확인해주세요.
+            data: null
+            error:
+              code: AUTH_INVALID_CREDENTIALS
+              message: 아이디 또는 비밀번호를 확인해주세요.
+              details: []
     AuthenticationRequired:
       description: 유효한 로그인 세션이 없음
       content:
@@ -180,8 +1975,11 @@ components:
           schema:
             $ref: '#/components/schemas/ErrorResponse'
           example:
-            code: AUTH_REQUIRED
-            message: 로그인이 필요합니다.
+            data: null
+            error:
+              code: AUTH_REQUIRED
+              message: 로그인이 필요합니다.
+              details: []
     InvalidRequest:
       description: 필수 입력 누락 또는 잘못된 입력 형식
       content:
@@ -189,5 +1987,34 @@ components:
           schema:
             $ref: '#/components/schemas/ErrorResponse'
           example:
-            code: INVALID_REQUEST
-            message: 입력 내용을 확인해주세요.
+            data: null
+            error:
+              code: INVALID_REQUEST
+              message: 입력 내용을 확인해주세요.
+              details:
+              - field: query.page
+                message: 1 이상이어야 합니다.
+    ClientNotFound:
+      description: 대상자가 없거나 현재 사용자에게 열람 권한이 없음
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          example:
+            data: null
+            error:
+              code: CLIENT_NOT_FOUND
+              message: 대상자를 찾을 수 없습니다.
+              details: []
+    ServiceUnavailable:
+      description: DB 등 조회에 필요한 서비스 연결 실패
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          example:
+            data: null
+            error:
+              code: SERVICE_UNAVAILABLE
+              message: 잠시 후 다시 시도해주세요.
+              details: []

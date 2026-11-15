@@ -34,3 +34,5 @@ Thumbs.db
 
 # Local coding tools
 .serena/
+.codex/
+.agents/

@@ -8,13 +8,13 @@
 | [데이터 목록](02_데이터_목록.md) | 필요한 필드·자료 출처·수집과 정제 |
 | [API 요청서](03_백엔드_API_요청서.md) | R01~R11의 입력·결과·업무 조건 |
 | [backend 구조](04_백엔드_구조.md) | 역할별 책임·예정 파일 배치·현재 구현 상태·개발 방향 |
-| [Swagger 문서](../swagger.yaml) | 초기 인증 API 세 개의 OpenAPI 초안 |
+| [Swagger 문서](../swagger.yaml) | 구현한 R03 조회 API 세 개의 계약과 인증 API 세 개의 초안 |
 
 ## 원본
 
 원격 레포에는 요구사항 Markdown을 포함합니다. 대응하는 DOCX 원본 세 개와 공모전 기획서 PDF는 로컬의 docs/original/에 보관하며 Git에서 제외합니다.
 
-기능·데이터·API 문서는 요구사항 기준 자료입니다. 이후 개발 순서와 구조의 변경 사항은 backend 구조 문서에 반영하고, 구현한 API 계약은 Swagger 문서에 맞춥니다. 현재 Swagger에는 인증 API 세 개의 초안만 있으며 실제 API는 아직 구현하지 않았습니다.
+기능·데이터·API 문서는 요구사항 기준 자료입니다. 이후 개발 순서와 구조의 변경 사항은 backend 구조 문서에 반영하고, API 계약은 DTO와 Swagger 문서에 맞춥니다. 현재 R03의 DTO·handler·service·DB 연결이 구현됐습니다. 실행한 서버의 `/docs`에서는 실제 등록된 R03 API를 확인하고, OpenAPI 3.1.0의 swagger.yaml에서는 R03 계약과 후속 인증 API 초안을 함께 확인합니다.
 
 ## DB 문서
 

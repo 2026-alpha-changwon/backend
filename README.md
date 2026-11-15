@@ -4,20 +4,22 @@
 
 사회복지사, 생활지원사, 방문건강간호사 등 실무자가 담당 대상자의 우선순위를 확인하고 방문과 전화 계획, 현장 기록, 혜택 신청지원, 기관 연계, 주간 보고를 하나의 흐름으로 처리합니다. 어르신이 직접 앱을 설치하거나 조작하는 것을 전제로 하지 않습니다.
 
-현재는 빈 역할별 폴더와 루트 파일을 준비한 초기 단계입니다. main.py·Dockerfile·compose.yaml은 빈 파일이며, 서버·DB 연결·API 실행은 이후에 구현합니다. 패키지는 설치하지 않았습니다.
+현재 R03 대상자 목록·상세·통합 이력과 공통 응답·인증 연결을 구현했습니다. 라즈베리파이에서 API와 PostgreSQL을 각 레포의 Docker Compose로 실행합니다.
 
-## 초기 파일 상태
+## 현재 구현 상태
 
 | 항목 | 현재 상태 |
 | --- | --- |
-| config, dto, handler, service, util, data, tests | 내부 파일 없이 빈 폴더로 생성 |
-| main.py, Dockerfile, compose.yaml | 빈 파일로 생성 |
+| config, dto, handler, service, util | R03 조회·권한·세션 확인·공통 오류 처리 구현 |
+| tests | R03 입력·권한·조회 테스트 작성 |
+| main.py | FastAPI·handler·CORS·공통 오류 처리 연결 |
+| Dockerfile, compose.yaml | API 이미지 빌드와 별도 API 컨테이너 실행 구성 |
 | .gitignore, .dockerignore | 환경변수·캐시·개발 파일 제외 규칙 작성 |
 | .env.example | DB 접속 정보·Origin·세션·외부 API 키 설정 예시 |
-| requirements.txt | FastAPI·Uvicorn 기본 패키지 목록 작성 |
-| [Swagger 문서](swagger.yaml) | 인증 API 세 개의 OpenAPI 초안 |
+| requirements.txt | FastAPI·Uvicorn·Pydantic·환경 설정·PostgreSQL 드라이버 |
+| [Swagger 문서](swagger.yaml) | R03 조회 API와 후속 인증 API 초안 |
 
-swagger.yaml은 [Swagger Editor](https://editor.swagger.io/)에서 열어 확인할 수 있습니다. 로그인 POST /auth/login, 내 정보 GET /auth/me, 로그아웃 POST /auth/logout을 문서화했습니다. 서버 주소·쿠키 이름·응답 형식은 초기 제안이며 구현하면서 맞춥니다. 세션 만료시간은 아직 정하지 않았습니다.
+swagger.yaml은 [Swagger Editor](https://editor.swagger.io/)에서 열어 확인할 수 있습니다. R03의 목록·상세·통합 이력과 로그인·내 정보·로그아웃 초안을 문서화했습니다. 실행 서버의 /docs에는 실제 등록된 R03 API가 표시됩니다. 로그인·세션 발급은 후속 개발 대상입니다.
 
 ## 문서와 개발 기준
 
@@ -116,9 +118,9 @@ MVP는 가상 배정 명단을 사용합니다. 회원가입과 비밀번호 찾
 | R10 | 지역 현황 및 자원 정보 |
 | R11 | 주간 보고 및 성과 집계 |
 
-backend와 db-server는 독립된 GitHub 레포로 개발합니다. backend는 API 코드·DB 접속·조회/저장을 담당하고, db-server는 PostgreSQL 실행·테이블 생성/변경·초기 데이터를 관리합니다. 데이터 형식은 dto에 정의하고, API별 업무 로직과 SQL 조회·저장은 service에서 함께 처리합니다.
+backend와 db는 독립된 GitHub 레포로 개발합니다. backend는 API 코드·DB 접속·조회/저장을 담당하고, db는 PostgreSQL 실행·테이블 생성/변경·초기 데이터를 관리합니다. 데이터 형식은 dto에 정의하고, API별 업무 로직과 SQL 조회·저장은 service에서 함께 처리합니다. 실제 DB 상태·스키마·초기 데이터·DB 컨테이너 설정은 DB 담당 채팅에서 확인합니다.
 
-배포 방향은 Raspberry Pi 5 8GB와 NVMe SSD의 Ubuntu Server에서 각 레포의 Docker 설정으로 API와 PostgreSQL을 실행하는 구성입니다. backend는 DATABASE_URL로 DB에 접속합니다. 개발 접근은 Tailscale, 공개 데모는 Tailscale Funnel을 사용하는 방향이며 실행·배포 설정은 아직 작성하지 않았습니다.
+배포 환경은 Raspberry Pi 5 8GB와 NVMe SSD의 Ubuntu Server 64비트 ARM64입니다. Mac에서 코드를 개발·검증하고 GitHub 원격에 반영한 뒤, 라즈베리파이에서 해당 코드를 받아 각 레포의 Docker Compose로 빌드·실행합니다. backend는 DATABASE_URL로 DB에 접속합니다. 개발 접근은 Tailscale, 공개 데모는 Tailscale Funnel을 사용하는 방향입니다.
 
 ## 상세 설계에서 확정할 사항
 
@@ -131,3 +133,49 @@ backend와 db-server는 독립된 GitHub 레포로 개발합니다. backend는 A
 - API 계약, 인증 방식, 중복 저장 방지와 동시 수정 처리 방식
 
 PDF에 등장하는 ARS 자동 전화, 담당자 가용 시간에 따른 방문 주기 자동 재배분, 위기 예측모델은 현재 세 DOCX의 구현 요구사항으로 확정되어 있지 않습니다. AI 요약과 최적 방문 경로는 명세에 따라 P2로 둡니다.
+
+## 라즈베리파이 배포와 실행
+
+2026년 11월 15일 DB 담당이 사용자 실행 출력으로 라즈베리파이 PostgreSQL 17.11, 테이블 32개, 대상자 12명, 연락 기록 4개와 다음 확인일 NOT NULL 적용을 확인했습니다. DB 컨테이너의 healthy 상태와 Docker 네트워크 meonjeogayo-db_default 연결도 확인됐습니다. backend의 Compose는 이 네트워크에 참여하며 DB 주소는 postgres:5432/changwon_dev입니다. DATABASE_URL의 계정과 비밀번호는 DB 담당이 확인한 값을 사용합니다.
+
+Mac에서 변경을 검증하고 커밋 메시지를 확인받아 원격에 푸시한 뒤 라즈베리파이에서 코드를 받습니다. 최초 배포는 기존 GitHub SSH 연결로 레포를 복제합니다.
+
+```sh
+cd ~/Projects/meonjeogayo-changwon
+git clone git@github.com:2026-alpha-changwon/backend.git backend
+cd backend
+cp .env.example .env
+```
+
+.env에서 DATABASE_URL의 계정·비밀번호를 설정합니다. 주소는 postgres:5432를 사용하며 사용자명·비밀번호의 특수문자는 URL 인코딩합니다. API_PORT는 라즈베리파이의 공개 포트이며 컨테이너 내부 포트는 8000입니다. CORS_ORIGINS에는 허용할 프론트 주소를 쉼표로 구분해 적습니다.
+
+backend 폴더에서 설정을 검사하고 이미지를 빌드해 실행합니다.
+
+```sh
+sudo docker compose config --quiet
+sudo docker compose up -d --build
+sudo docker compose ps
+sudo docker compose logs --tail=80 api
+```
+
+코드를 갱신할 때는 원격 변경을 fetch하고 변경 내용을 확인한 뒤 main 브랜치를 갱신하고 컨테이너를 다시 빌드합니다.
+
+```sh
+git fetch origin
+git log --oneline HEAD..origin/main
+git diff --stat HEAD origin/main
+git pull --ff-only origin main
+sudo docker compose up -d --build
+```
+
+기본 주소는 라즈베리파이 주소의 8000번 포트입니다. /docs에서 실행 중인 API 문서를 확인합니다. Compose healthcheck는 /openapi.json의 HTTP 응답을 확인합니다. R03는 유효한 세션 쿠키로 현재 사용자를 확인합니다.
+
+Docker Compose 설정은 정적 검사했으며 실제 이미지 빌드·ARM64 컨테이너 실행·라즈베리 DB 연결 검증은 배포 단계에서 확인합니다.
+
+## 코드 검증
+
+Python 3.11 이상의 로컬 검증 환경에서 requirements.txt의 패키지를 준비하고 다음 명령을 실행합니다. DB 통합 테스트에는 DB 담당이 준비한 공통 개발 seed의 TEST_DATABASE_URL을 지정합니다. 테스트는 담당자 신원을 주입하고 DB를 읽기 전용으로 조회합니다. TEST_DATABASE_URL이 없으면 DB 통합 테스트를 건너뜁니다.
+
+```sh
+.venv/bin/python -m unittest discover -s tests -v
+```
