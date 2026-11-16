@@ -4,14 +4,17 @@ import asyncio
 import json
 import unittest
 from datetime import datetime, timedelta
+from unittest.mock import patch
 from urllib.parse import urlencode
 from uuid import UUID
 
 import psycopg
 from psycopg.rows import dict_row
+from pydantic import ValidationError
 
 from config.database import get_connection
-from config.settings import get_settings
+from config.settings import Settings, get_settings
+from dto.client_dto import ClientListData
 from main import app
 from util.authentication import get_current_user_id
 from util.errors import ApiError
@@ -89,6 +92,62 @@ class APIRequestCase(unittest.TestCase):
         self.assertIsInstance(body["error"]["message"], str)
         self.assertIsInstance(body["error"]["details"], list)
         return body["error"]
+
+
+class ClientAuthenticationTests(APIRequestCase):
+    def setUp(self):
+        super().setUp()
+        del app.dependency_overrides[get_current_user_id]
+
+    def test_dev_user_reaches_list_service_without_session_cookie(self):
+        result = ClientListData(
+            items=[], page=1, page_size=20, total=0,
+            queried_at=datetime.fromisoformat("2026-11-16T12:00:00+09:00"),
+        )
+        with (
+            patch("util.authentication.get_settings", return_value=Settings(dev_user_id=WORKER_ID)),
+            patch("util.authentication.get_session_user_id") as session_user,
+            patch("handler.client_handler.client_service.list_clients", return_value=result) as list_clients,
+        ):
+            data = self.get_data()
+
+        self.assertEqual(data["items"], [])
+        self.assertEqual(data["total"], 0)
+        self.assertEqual(data["data_mode"], "DEMO")
+        list_clients.assert_called_once()
+        connection, user_id, query = list_clients.call_args.args
+        self.assertIsNone(connection)
+        self.assertEqual(user_id, WORKER_ID)
+        self.assertEqual(query.page, 1)
+        self.assertEqual(query.page_size, 20)
+        session_user.assert_not_called()
+
+    def test_missing_session_requires_authentication_when_dev_user_is_unset(self):
+        with (
+            patch("util.authentication.get_settings", return_value=Settings()),
+            patch("handler.client_handler.client_service.list_clients") as list_clients,
+        ):
+            self.assert_error("/clients", 401, "AUTH_REQUIRED")
+
+        list_clients.assert_not_called()
+
+    def test_dev_user_environment_setting(self):
+        for value, expected in ((str(WORKER_ID), WORKER_ID), ("", None), (None, None)):
+            environment = {} if value is None else {"DEV_USER_ID": value}
+            with (
+                self.subTest(value=value),
+                patch("config.settings.dotenv_values", return_value={}),
+                patch.dict("os.environ", environment, clear=True),
+            ):
+                self.assertEqual(get_settings.__wrapped__().dev_user_id, expected)
+
+    def test_invalid_dev_user_environment_setting_is_rejected(self):
+        with (
+            patch("config.settings.dotenv_values", return_value={}),
+            patch.dict("os.environ", {"DEV_USER_ID": "invalid"}, clear=True),
+            self.assertRaises(ValidationError),
+        ):
+            get_settings.__wrapped__()
 
 
 class ClientInputTests(APIRequestCase):

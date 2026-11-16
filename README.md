@@ -21,6 +21,8 @@
 
 swagger.yaml은 [Swagger Editor](https://editor.swagger.io/)에서 열어 확인할 수 있습니다. R03의 목록·상세·통합 이력과 로그인·내 정보·로그아웃 초안을 문서화했습니다. 실행 서버의 /docs에는 실제 등록된 R03 API가 표시됩니다. 로그인·세션 발급은 후속 개발 대상입니다.
 
+로그인 구현 전에는 `.env`의 `DEV_USER_ID=bedfe465-7ea8-5356-a760-785d68f2252a`로 공통 개발 담당자를 사용합니다. 이 설정에서 R03 API는 쿠키 없이 호출할 수 있으며, 해당 담당자의 기관·지역·현재 배정 범위에 따라 조회합니다. `DEV_USER_ID`를 비우면 세션 인증을 사용합니다.
+
 ## 문서와 개발 기준
 
 기능·데이터·API 요구사항은 아래 Markdown 문서로 확인합니다. 대응하는 DOCX 원본과 PDF 기획서는 로컬의 docs/original/에 보관하며 Git에서 제외합니다. Markdown은 원본의 본문·식별자·링크를 보존한 읽기용 사본입니다.
@@ -168,7 +170,7 @@ git pull --ff-only origin main
 sudo docker compose up -d --build
 ```
 
-기본 주소는 라즈베리파이 주소의 8000번 포트입니다. /docs에서 실행 중인 API 문서를 확인합니다. Compose healthcheck는 /openapi.json의 HTTP 응답을 확인합니다. R03는 유효한 세션 쿠키로 현재 사용자를 확인합니다.
+기본 주소는 라즈베리파이 주소의 8000번 포트입니다. /docs에서 실행 중인 API 문서를 확인합니다. Compose healthcheck는 /openapi.json의 HTTP 응답을 확인합니다. 기존 `.env`에도 위 `DEV_USER_ID` 값을 추가하고 컨테이너를 다시 빌드·실행하면 Swagger에서 로그인 없이 R03를 조회할 수 있습니다.
 
 Docker Compose 설정은 정적 검사했으며 실제 이미지 빌드·ARM64 컨테이너 실행·라즈베리 DB 연결 검증은 배포 단계에서 확인합니다.
 

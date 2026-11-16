@@ -3,7 +3,8 @@ info:
   title: 먼저가요 창원 API
   version: 0.2.0
   description: R03 대상자 목록·상세·통합 이력을 구현했습니다. 공통 JSON 응답은 data와 error를 포함합니다. 성공 시 error는 null이고 실패 시 data는 null입니다.
-    204는 본문 없이 반환합니다. 개인 자료는 가상이며 R03의 data_mode는 DEMO입니다. 현재 사용자 확인은 세션 쿠키의 해시·만료·폐기·계정 활성 상태를 검사합니다.
+    204는 본문 없이 반환합니다. 개인 자료는 가상이며 R03의 data_mode는 DEMO입니다. DEV_USER_ID를 설정한 개발 서버에서는 쿠키 없이 해당 담당자의 배정 범위로 R03를 조회합니다.
+    DEV_USER_ID가 비어 있으면 세션 쿠키의 해시·만료·폐기·계정 활성 상태를 검사합니다.
     인증 API 세 개는 후속 구현용 초안입니다. 세션 쿠키 이름 session과 개발 단계 동시 로그인 허용을 기준으로 합니다.
 servers:
 - url: http://localhost:8000

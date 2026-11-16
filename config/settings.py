@@ -3,6 +3,7 @@
 import os
 from functools import lru_cache
 from pathlib import Path
+from uuid import UUID
 
 from dotenv import dotenv_values
 from pydantic import BaseModel, Field
@@ -16,6 +17,7 @@ class Settings(BaseModel):
     api_port: int = Field(default=8000, ge=1, le=65535)
     cors_origins: list[str] = Field(default_factory=list)
     session_cookie_name: str = Field(default="session", min_length=1)
+    dev_user_id: UUID | None = None
 
 
 @lru_cache
@@ -31,4 +33,5 @@ def get_settings() -> Settings:
             if origin.strip()
         ],
         session_cookie_name=values.get("SESSION_COOKIE_NAME") or "session",
+        dev_user_id=values.get("DEV_USER_ID") or None,
     )
