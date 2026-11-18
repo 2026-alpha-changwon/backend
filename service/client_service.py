@@ -19,7 +19,7 @@ from util.errors import ApiError
 
 
 # 기관과 사용자가 각각 구 또는 동을 허용할 수 있습니다.
-_CLIENT_QUERY = """
+VISIBLE_CLIENTS_CTE = """
 WITH visible_clients AS (
     SELECT c.*, r.name AS region_name, district.name AS district_name,
            o.name AS organization_name
@@ -50,7 +50,11 @@ WITH visible_clients AS (
             AND assignment.starts_at <= transaction_timestamp()
             AND (assignment.ends_at IS NULL OR transaction_timestamp() < assignment.ends_at)
       )
-), client_rows AS (
+)
+"""
+
+_CLIENT_QUERY = VISIBLE_CLIENTS_CTE + """
+, client_rows AS (
     SELECT c.*,
            CASE WHEN c.birth_date <= (transaction_timestamp() AT TIME ZONE 'Asia/Seoul')::date
                 THEN extract(year FROM age(

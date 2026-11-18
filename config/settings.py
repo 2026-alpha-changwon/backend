@@ -18,6 +18,7 @@ class Settings(BaseModel):
     cors_origins: list[str] = Field(default_factory=list)
     session_cookie_name: str = Field(default="session", min_length=1)
     dev_user_id: UUID | None = None
+    contact_write_dev_user_id: UUID | None = None
 
 
 @lru_cache
@@ -34,4 +35,5 @@ def get_settings() -> Settings:
         ],
         session_cookie_name=values.get("SESSION_COOKIE_NAME") or "session",
         dev_user_id=values.get("DEV_USER_ID") or None,
+        contact_write_dev_user_id=values.get("CONTACT_WRITE_DEV_USER_ID") or None,
     )

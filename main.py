@@ -9,6 +9,7 @@ from starlette.exceptions import HTTPException
 
 from config.settings import get_settings
 from handler.client_handler import router as client_router
+from handler.contact_handler import router as contact_router
 from util.errors import ApiError
 from util.response import error_response
 
@@ -17,7 +18,7 @@ app = FastAPI(
     title="먼저가요 창원 API",
     version="0.2.0",
     description=(
-        "개발용 공통 담당자로 조회합니다. 쿠키 없이 Try it out과 Execute로 API를 실행할 수 있습니다."
+        "개발용 공통 담당자로 조회합니다. 쿠키 없이 Try it out과 Execute로 조회 API를 실행할 수 있습니다."
         if settings.dev_user_id is not None
         else "유효한 세션 쿠키로 현재 사용자를 확인합니다."
     ),
@@ -26,10 +27,11 @@ app.add_middleware(
     CORSMiddleware,
     allow_origins=settings.cors_origins,
     allow_credentials=True,
-    allow_methods=["GET"],
+    allow_methods=["GET", "POST"],
     allow_headers=["Content-Type"],
 )
 app.include_router(client_router)
+app.include_router(contact_router)
 
 
 @app.exception_handler(ApiError)

@@ -181,3 +181,14 @@ Python 3.11 이상의 로컬 검증 환경에서 requirements.txt의 패키지�
 ```sh
 .venv/bin/python -m unittest discover -s tests -v
 ```
+
+R07의 양식 조회와 방문·전화 기록 저장은 [API 요청서의 R07 계약](docs/03_백엔드_API_요청서.md#r07-첫-구현-범위)을 참고합니다. 로컬 저장을 확인할 때는 공통 개발 seed를 넣은 별도 PostgreSQL과 루프백에 바인딩한 API를 사용합니다.
+
+```sh
+DATABASE_URL='<별도 개발 DB의 DSN>' \
+DEV_USER_ID=bedfe465-7ea8-5356-a760-785d68f2252a \
+CONTACT_WRITE_DEV_USER_ID=bedfe465-7ea8-5356-a760-785d68f2252a \
+.venv/bin/python -m uvicorn main:app --host 127.0.0.1 --port 8000
+```
+
+`CONTACT_WRITE_DEV_USER_ID`는 위와 같은 비공개 개발 서버에서만 설정합니다. 비어 있으면 저장에 유효한 세션 쿠키가 필요합니다. 프론트 개발 서버로 확인할 때는 브라우저 주소의 Origin을 `CORS_ORIGINS`에 추가하고 `Content-Type: application/json`으로 요청합니다. R07 통합 테스트는 개발 seed를 넣은 일회용 로컬 DB `meonjeogayo_r07_test`의 DSN을 `R07_TEST_DATABASE_URL`에 지정해 실행합니다.

@@ -2,7 +2,7 @@ openapi: 3.1.0
 info:
   title: 먼저가요 창원 API
   version: 0.2.0
-  description: R03 대상자 목록·상세·통합 이력을 구현했습니다. 공통 JSON 응답은 data와 error를 포함합니다. 성공 시 error는 null이고 실패 시 data는 null입니다.
+  description: R03 대상자 목록·상세·통합 이력과 R07 현장 기록 양식 조회·저장을 설명합니다. 공통 JSON 응답은 data와 error를 포함합니다. 성공 시 error는 null이고 실패 시 data는 null입니다.
     204는 본문 없이 반환합니다. 개인 자료는 가상이며 R03의 data_mode는 DEMO입니다. DEV_USER_ID를 설정한 개발 서버에서는 쿠키 없이 해당 담당자의 배정 범위로 R03를 조회합니다.
     DEV_USER_ID가 비어 있으면 세션 쿠키의 해시·만료·폐기·계정 활성 상태를 검사합니다.
     인증 API 세 개는 후속 구현용 초안입니다. 세션 쿠키 이름 session과 개발 단계 동시 로그인 허용을 기준으로 합니다.
@@ -14,6 +14,8 @@ tags:
   description: 로그인과 세션 관리. 구현 예정
 - name: Clients
   description: R03 대상자 목록·상세·통합 이력
+- name: Contacts
+  description: R07 현장 기록 양식 조회와 방문·전화 기록 저장
 security:
 - CookieAuth: []
 paths:
@@ -690,6 +692,139 @@ paths:
         적용합니다. 시작일이 종료일보다 늦으면 422입니다. 각 이벤트의 detail에 관련 기록 상세를 포함합니다. 연락의 next_check_date는 성공·실패·거부 모두 필수입니다. 혜택
         before_state/after_state는 당시 값이며 연계 from_status/to_status/change_result는 당시 변경입니다. 연계 current_status/current_result와
         처리시각은 조회 시각의 현재 요청 상태입니다. 연계는 내부 가상 처리로 delivery_status는 NOT_SENT입니다. 페이지·권한·조회 기준시각·공통 응답 규칙은 목록과 같습니다.
+  /clients/{client_id}/contact-form:
+    get:
+      tags:
+      - Contacts
+      summary: 현장 기록 양식 조회
+      operationId: getContactForm
+      security:
+      - CookieAuth: []
+      parameters:
+      - name: client_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+          title: Client Id
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SuccessResponse_ContactFormData_'
+        '401':
+          description: 로그인이 필요합니다.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: 대상자가 없거나 권한이 없습니다.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '422':
+          description: 입력 내용을 확인해주세요.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '503':
+          description: DB 또는 체크리스트를 사용할 수 없습니다.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+      description: 현재 게시 양식의 순서·필수 여부·선택지와 대상자 버전을 조회합니다.
+  /clients/{client_id}/contacts:
+    post:
+      tags:
+      - Contacts
+      summary: 현장 기록 저장
+      operationId: createContact
+      security:
+      - CookieAuth: []
+      parameters:
+      - name: client_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+          title: Client Id
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ContactCreateRequest'
+            example:
+              request_key: 19877c81-aa2b-4102-a44d-45f2f6056b40
+              expected_version: 1
+              checklist_version_id: 7801d1a1-fb30-5c78-b6eb-6e0e618eeb0f
+              answers:
+              - question_id: 5b0a2613-44cf-5cdf-ab95-6eb1cfa5a4c0
+                answer_code: UNCONFIRMED
+              channel: PHONE
+              occurred_at: '2026-11-18T10:00:00+09:00'
+              result: FAILED
+              crisis_detected: null
+              memo: 전화 연결이 되지 않았습니다.
+              next_check_date: '2026-11-20'
+              no_action_reason: 연락 실패
+      responses:
+        '201':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SuccessResponse_ContactCreatedData_'
+              example:
+                data:
+                  contact_id: 20bb8e15-e92e-447c-8e9b-cdbdcbd3a056
+                  client_id: 21ecb97b-ebc5-5a07-b88d-85511ebe793a
+                  client_version: 2
+                  last_success_at: '2026-11-03T09:00:00+09:00'
+                  last_attempt_at: '2026-11-18T10:00:00+09:00'
+                  next_check_date: '2026-11-20'
+                  calculation_status: PENDING
+                error: null
+        '401':
+          description: 로그인이 필요합니다.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: 대상자가 없거나 권한이 없습니다.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '422':
+          description: 입력 내용을 확인해주세요.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '503':
+          description: DB 또는 체크리스트를 사용할 수 없습니다.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '409':
+          description: 대상자 버전, 양식 버전 또는 요청 키가 충돌합니다.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+      description: 계획에 연결하지 않은 방문·전화 기록을 저장합니다. 같은 입력과 요청 키를 재전송하면 최초 응답을 받습니다. 유효한 세션 쿠키 또는 격리된 개발 서버의 CONTACT_WRITE_DEV_USER_ID
+        설정이 필요합니다.
 components:
   securitySchemes:
     CookieAuth:
@@ -698,6 +833,249 @@ components:
       name: session
       description: 로그인 성공 시 발급하는 세션 쿠키
   schemas:
+    ContactAnswerInput:
+      properties:
+        question_id:
+          type: string
+          format: uuid
+          title: Question Id
+        answer_code:
+          type: string
+          enum:
+          - RISK_FOUND
+          - NO_RISK
+          - UNCONFIRMED
+          - NOT_APPLICABLE
+          title: Answer Code
+        note:
+          anyOf:
+          - type: string
+            pattern: ^[^\x00]*$
+          - type: 'null'
+          title: Note
+      additionalProperties: false
+      type: object
+      required:
+      - question_id
+      - answer_code
+      title: ContactAnswerInput
+    ContactCreateRequest:
+      properties:
+        request_key:
+          type: string
+          maxLength: 128
+          minLength: 1
+          pattern: ^[^\x00]*$
+          title: Request Key
+          description: 같은 저장 요청을 재시도할 때 그대로 사용하는 키
+        expected_version:
+          type: integer
+          maximum: 9.223372036854776e+18
+          minimum: 1.0
+          title: Expected Version
+        checklist_version_id:
+          type: string
+          format: uuid
+          title: Checklist Version Id
+        answers:
+          items:
+            $ref: '#/components/schemas/ContactAnswerInput'
+          type: array
+          title: Answers
+        channel:
+          type: string
+          enum:
+          - VISIT
+          - PHONE
+          title: Channel
+        occurred_at:
+          type: string
+          format: date-time
+          title: Occurred At
+          description: 시간대가 포함된 실제 방문 또는 전화 일시
+        result:
+          type: string
+          enum:
+          - SUCCESS
+          - FAILED
+          - REFUSED
+          title: Result
+        crisis_detected:
+          anyOf:
+          - type: boolean
+          - type: 'null'
+          title: Crisis Detected
+          description: 미확인인 경우 null
+        memo:
+          anyOf:
+          - type: string
+            maxLength: 2000
+            pattern: ^[^\x00]*$
+          - type: 'null'
+          title: Memo
+        next_check_date:
+          type: string
+          format: date
+          title: Next Check Date
+          description: 성공·실패·거부 모두 필수인 다음 확인 예정일
+        no_action_reason:
+          anyOf:
+          - type: string
+            pattern: ^[^\x00]*$
+          - type: 'null'
+          title: No Action Reason
+      additionalProperties: false
+      type: object
+      required:
+      - request_key
+      - expected_version
+      - checklist_version_id
+      - channel
+      - occurred_at
+      - result
+      - next_check_date
+      title: ContactCreateRequest
+    ContactCreatedData:
+      properties:
+        contact_id:
+          type: string
+          format: uuid
+          title: Contact Id
+        client_id:
+          type: string
+          format: uuid
+          title: Client Id
+        client_version:
+          type: integer
+          minimum: 1.0
+          title: Client Version
+        last_success_at:
+          anyOf:
+          - type: string
+            format: date-time
+          - type: 'null'
+          title: Last Success At
+        last_attempt_at:
+          anyOf:
+          - type: string
+            format: date-time
+          - type: 'null'
+          title: Last Attempt At
+        next_check_date:
+          type: string
+          format: date
+          title: Next Check Date
+        calculation_status:
+          type: string
+          const: PENDING
+          title: Calculation Status
+          default: PENDING
+      type: object
+      required:
+      - contact_id
+      - client_id
+      - client_version
+      - last_success_at
+      - last_attempt_at
+      - next_check_date
+      title: ContactCreatedData
+    ContactFormData:
+      properties:
+        client_id:
+          type: string
+          format: uuid
+          title: Client Id
+        client_version:
+          type: integer
+          minimum: 1.0
+          title: Client Version
+          description: 저장할 때 expected_version에 넣는 대상자 버전
+        checklist_version_id:
+          type: string
+          format: uuid
+          title: Checklist Version Id
+        version_code:
+          type: string
+          title: Version Code
+        name:
+          type: string
+          title: Name
+        questions:
+          items:
+            $ref: '#/components/schemas/ContactQuestion'
+          type: array
+          title: Questions
+      type: object
+      required:
+      - client_id
+      - client_version
+      - checklist_version_id
+      - version_code
+      - name
+      - questions
+      title: ContactFormData
+    ContactQuestion:
+      properties:
+        question_id:
+          type: string
+          format: uuid
+          title: Question Id
+        question_code:
+          type: string
+          title: Question Code
+        label:
+          type: string
+          title: Label
+        sort_order:
+          type: integer
+          minimum: 0.0
+          title: Sort Order
+        is_required:
+          type: boolean
+          title: Is Required
+        allowed_answers:
+          items:
+            type: string
+            enum:
+            - RISK_FOUND
+            - NO_RISK
+            - UNCONFIRMED
+            - NOT_APPLICABLE
+          type: array
+          title: Allowed Answers
+      type: object
+      required:
+      - question_id
+      - question_code
+      - label
+      - sort_order
+      - is_required
+      - allowed_answers
+      title: ContactQuestion
+    SuccessResponse_ContactCreatedData_:
+      properties:
+        data:
+          $ref: '#/components/schemas/ContactCreatedData'
+        error:
+          type: 'null'
+          title: Error
+      type: object
+      required:
+      - data
+      - error
+      title: SuccessResponse[ContactCreatedData]
+    SuccessResponse_ContactFormData_:
+      properties:
+        data:
+          $ref: '#/components/schemas/ContactFormData'
+        error:
+          type: 'null'
+          title: Error
+      type: object
+      required:
+      - data
+      - error
+      title: SuccessResponse[ContactFormData]
     BenefitHistoryDetail:
       properties:
         client_benefit_id:

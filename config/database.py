@@ -1,4 +1,4 @@
-"""한 요청에서 사용하는 PostgreSQL 읽기 연결입니다."""
+"""요청 단위 PostgreSQL 연결과 트랜잭션을 제공합니다."""
 
 from collections.abc import Iterator
 
@@ -10,6 +10,14 @@ from util.errors import ApiError
 
 
 def get_connection() -> Iterator[psycopg.Connection]:
+    yield from _transaction("SET TRANSACTION ISOLATION LEVEL REPEATABLE READ READ ONLY")
+
+
+def get_write_connection() -> Iterator[psycopg.Connection]:
+    yield from _transaction("SET TRANSACTION ISOLATION LEVEL READ COMMITTED READ WRITE")
+
+
+def _transaction(transaction_mode: str) -> Iterator[psycopg.Connection]:
     database_url = get_settings().database_url
     if not database_url:
         raise ApiError("SERVICE_UNAVAILABLE", "DB 연결 설정이 필요합니다.", status_code=503)
@@ -23,7 +31,7 @@ def get_connection() -> Iterator[psycopg.Connection]:
         ) as connection:
             connection.execute("SET TIME ZONE 'Asia/Seoul'")
             with connection.transaction():
-                connection.execute("SET TRANSACTION ISOLATION LEVEL REPEATABLE READ READ ONLY")
+                connection.execute(transaction_mode)
                 yield connection
     except (psycopg.OperationalError, psycopg.InterfaceError) as error:
         raise ApiError(

@@ -247,6 +247,54 @@ API 요청 R01부터 R11까지  ·  기능별 업무 규칙과 공통 요구사�
 
 연락 실패·거부는 최근 성공 확인일을 바꾸지 않고 시도일만 별도 기록한다. 연락하지 못한 대상자의 안전 상태를 위험 없음으로 저장하지 않는다. 중복 클릭·재시도에도 같은 기록이 중복 생성되지 않아야 한다. 체크리스트 변경·다른 담당자 수정은 화면에서 알 수 있어야 한다. 메모 2,000자 이하·미래 확인일시 금지를 입력 기준으로 제안한다. 저장 후 큐·혜택·확인일이 일관되게 반영되어야 한다.
 
+#### R07 첫 구현 범위
+
+| 메서드·경로 | 프론트 연동 |
+| --- | --- |
+| GET /clients/{client_id}/contact-form | 현장 기록 화면을 열 때 호출합니다. 현재 게시 양식의 `checklist_version_id`, `version_code`, `name`, `questions`와 대상자의 `client_version`을 받습니다. 문항에는 `question_id`, `question_code`, `label`, `sort_order`, `is_required`, `allowed_answers`가 있습니다. |
+| POST /clients/{client_id}/contacts | 양식의 `client_version`을 `expected_version`으로 보내고, 받고 사용한 양식 ID와 문항 ID를 보냅니다. 같은 저장을 재시도할 때는 요청 키와 입력을 그대로 사용합니다. |
+
+공통 개발 데이터에서 계획에 연결되지 않은 전화 시도 저장 요청의 예시입니다.
+
+```json
+{
+  "request_key": "19877c81-aa2b-4102-a44d-45f2f6056b40",
+  "expected_version": 1,
+  "checklist_version_id": "7801d1a1-fb30-5c78-b6eb-6e0e618eeb0f",
+  "answers": [
+    {"question_id": "5b0a2613-44cf-5cdf-ab95-6eb1cfa5a4c0", "answer_code": "UNCONFIRMED"}
+  ],
+  "channel": "PHONE",
+  "occurred_at": "2026-11-18T10:00:00+09:00",
+  "result": "FAILED",
+  "crisis_detected": null,
+  "memo": "전화 연결이 되지 않았습니다.",
+  "next_check_date": "2026-11-20",
+  "no_action_reason": "연락 실패"
+}
+```
+
+저장에 성공하면 `201`과 공통 응답을 반환합니다. `data`에는 저장한 `contact_id`, `client_id`, 변경된 `client_version`, 대상자의 `last_success_at`, `last_attempt_at`, `next_check_date`, `calculation_status`가 있습니다. 날짜는 전체 연락 이력을 기준으로 집계합니다.
+
+```json
+{
+  "data": {
+    "contact_id": "20bb8e15-e92e-447c-8e9b-cdbdcbd3a056",
+    "client_id": "21ecb97b-ebc5-5a07-b88d-85511ebe793a",
+    "client_version": 2,
+    "last_success_at": "2026-11-03T09:00:00+09:00",
+    "last_attempt_at": "2026-11-18T10:00:00+09:00",
+    "next_check_date": "2026-11-20",
+    "calculation_status": "PENDING"
+  },
+  "error": null
+}
+```
+
+같은 키와 같은 입력을 재전송하면 기존 접근 권한을 확인하고 최초의 `201`과 응답을 돌려줍니다. 응답을 잃었을 때는 기존 키를 유지합니다. `VERSION_CONFLICT` 또는 `CHECKLIST_VERSION_CONFLICT`가 오면 양식을 다시 불러온 뒤 새 저장 요청을 보냅니다. 같은 키의 입력이 달라지면 `REQUEST_KEY_CONFLICT`입니다. 세 오류는 `409`입니다.
+
+실제 연락 일시는 시간대를 포함하고 미래 일시는 `422`입니다. 다음 확인일은 세 결과 모두 필수이며 실제 연락일(한국 시간) 당일 또는 이후로 지정합니다. 메모는 2,000자까지 받습니다. 실패·거부에서 ‘위험 없음’ 답변을 저장할 수 없습니다. 위기 미확인은 `null`로 보냅니다. 현재 양식은 개발용 문항으로 검증하며 계획 갱신·혜택 행동·프로필 자동 갱신·위험점수 계산은 후속 연결 범위입니다.
+
 ### R08 복지혜택 안내 및 신청지원
 
 대상자의 나이·가구형태·행정동·소득취약·현재 수급 정보를 바탕으로 확인할 혜택 후보를 제공한다. 필요한 결과는 혜택명·유형·근거·미확인 조건·신청 가능 시점·필요 서류·대리신청 여부/조건·공식 출처·검토일·규칙 버전·지원 상태다.
