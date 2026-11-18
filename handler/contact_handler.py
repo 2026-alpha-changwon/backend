@@ -10,7 +10,7 @@ from config.database import get_connection, get_write_connection
 from dto.common_dto import ErrorResponse
 from dto.contact_dto import ContactCreatedResponse, ContactCreateRequest, ContactFormResponse
 from service import contact_service, contact_write_service
-from util.authentication import get_contact_writer_id, get_current_user_id
+from util.authentication import get_current_user_id, get_current_writer_id
 from util.response import success_response
 
 router = APIRouter(
@@ -25,7 +25,7 @@ router = APIRouter(
 )
 
 CurrentUser = Annotated[UUID, Depends(get_current_user_id)]
-ContactWriter = Annotated[UUID, Depends(get_contact_writer_id)]
+CurrentWriter = Annotated[UUID, Depends(get_current_writer_id)]
 Database = Annotated[Connection, Depends(get_connection)]
 WriteDatabase = Annotated[Connection, Depends(get_write_connection, scope="function")]
 
@@ -47,13 +47,13 @@ def get_contact_form(client_id: UUID, user_id: CurrentUser, connection: Database
     operation_id="createContact",
     summary="현장 기록 저장",
     responses={
-        409: {"model": ErrorResponse, "description": "대상자 버전, 양식 버전 또는 요청 키가 충돌합니다."},
+        409: {"model": ErrorResponse, "description": "대상자나 양식 버전, 계획 상태나 이력, 또는 요청 키가 충돌합니다."},
     },
 )
 def create_contact(
     client_id: UUID,
     payload: ContactCreateRequest,
-    user_id: ContactWriter,
+    user_id: CurrentWriter,
     connection: WriteDatabase,
 ):
     saved = contact_write_service.create_contact(connection, user_id, client_id, payload)

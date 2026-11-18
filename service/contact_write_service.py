@@ -5,12 +5,13 @@ from uuid import UUID, uuid4
 from psycopg import Connection
 from psycopg.types.json import Jsonb
 
-from dto.contact_dto import ContactCreateRequest, ContactCreatedData
+from dto.contact_dto import ContactCreateRequest, ContactCreatedData, ContactPlanData
 from service.contact_service import (
     get_checklist_questions,
     get_contact_client,
     get_current_checklist,
 )
+from service.plan_update_service import lock_visible_plan, record_plan_event
 from util.errors import ApiError
 
 
@@ -45,6 +46,8 @@ def create_contact(
             raise ApiError(
                 "REQUEST_KEY_CONFLICT", "같은 요청 키에 다른 입력을 사용할 수 없습니다.", status_code=409,
             )
+        if payload.plan_id is not None:
+            lock_visible_plan(connection, user_id, payload.plan_id, client_id=client_id)
         return ContactCreatedData.model_validate(previous["result_payload"]["response"])
 
     if client["version"] != payload.expected_version:
@@ -60,9 +63,14 @@ def create_contact(
     questions = get_checklist_questions(connection, payload.checklist_version_id)
     _validate_answers(payload, questions)
     assignment_id = _contact_assignment(connection, user_id, client, payload)
+    plan, plan_version_at_contact = _contact_plan(connection, user_id, client_id, assignment_id, payload)
 
     contact_id = uuid4()
-    _insert_contact(connection, user_id, client_id, client, assignment_id, contact_id, request_id, payload)
+    _insert_contact(
+        connection, user_id, client_id, client, assignment_id, contact_id, request_id, payload,
+        plan_version_at_contact=plan_version_at_contact,
+    )
+    linked_plan = _record_plan_execution(connection, plan, user_id, request_id, payload)
     updated = connection.execute(
         """
         UPDATE clients
@@ -84,7 +92,7 @@ def create_contact(
 
     result = ContactCreatedData(
         contact_id=contact_id, client_id=client_id, client_version=updated["version"],
-        **_contact_dates(connection, client_id),
+        plan=linked_plan, **_contact_dates(connection, client_id),
     )
     result_payload = {
         "schema_version": 1,
@@ -103,7 +111,10 @@ def create_contact(
 
 
 def _request_payload(client_id: UUID, payload: ContactCreateRequest) -> dict:
-    body = payload.model_dump(mode="json", exclude={"request_key", "expected_version"})
+    excluded = {"request_key", "expected_version"}
+    if payload.plan_id is None:
+        excluded.update(("plan_id", "plan_version"))
+    body = payload.model_dump(mode="json", exclude=excluded)
     body["answers"] = sorted(body["answers"], key=lambda answer: answer["question_id"])
     return {
         "schema_version": 1,
@@ -116,6 +127,12 @@ def _request_payload(client_id: UUID, payload: ContactCreateRequest) -> dict:
 def _version_conflict() -> ApiError:
     return ApiError(
         "VERSION_CONFLICT", "대상자 정보가 변경되었습니다. 최신 정보를 확인해 주세요.", status_code=409,
+    )
+
+
+def _plan_version_conflict() -> ApiError:
+    return ApiError(
+        "PLAN_VERSION_CONFLICT", "계획이 변경되었습니다. 최신 계획을 확인해 주세요.", status_code=409,
     )
 
 
@@ -183,21 +200,88 @@ def _contact_assignment(
     return assignment["id"]
 
 
+def _contact_plan(
+    connection: Connection, user_id: UUID, client_id: UUID, assignment_id: UUID,
+    payload: ContactCreateRequest,
+) -> tuple[dict | None, int | None]:
+    if payload.plan_id is None:
+        return None, None
+    plan = lock_visible_plan(connection, user_id, payload.plan_id, client_id=client_id)
+    if plan["version"] != payload.plan_version:
+        raise _plan_version_conflict()
+    if plan["review_status"] != "CONFIRMED":
+        raise ApiError("PLAN_STATE_CONFLICT", "확정된 계획에만 기록을 연결할 수 있습니다.", status_code=409)
+    previous = connection.execute(
+        """
+        SELECT plan_version, after_state FROM care_plan_events
+        WHERE plan_id = %s AND occurred_at <= %s AND plan_version <= %s
+        ORDER BY occurred_at DESC, plan_version DESC
+        LIMIT 1
+        """,
+        (payload.plan_id, payload.occurred_at, plan["version"]),
+    ).fetchone()
+    if previous is None or previous["after_state"].get("review_status") != "CONFIRMED":
+        raise ApiError(
+            "PLAN_HISTORY_CONFLICT", "실제 연락 시각에 확정된 계획 이력이 없습니다.", status_code=409,
+        )
+    state = previous["after_state"]
+    if state.get("assignment_id") != str(assignment_id) or state.get("channel") != payload.channel:
+        raise ApiError(
+            "INVALID_REQUEST", "연락 당시 배정과 연락 방식이 계획과 일치하는지 확인해 주세요.", status_code=422,
+        )
+    return plan, previous["plan_version"]
+
+
+def _record_plan_execution(
+    connection: Connection, plan: dict | None, user_id: UUID, request_id: UUID,
+    payload: ContactCreateRequest,
+) -> ContactPlanData | None:
+    if plan is None:
+        return None
+
+    execution_status = "CONFIRMED" if payload.result == "SUCCESS" else "CONTACT_FAILED"
+    if plan["execution_status"] not in ("CONFIRMED", execution_status):
+        updated = connection.execute(
+            """
+            UPDATE care_plans
+            SET execution_status = %s, version = version + 1,
+                updated_at = greatest(updated_at, clock_timestamp())
+            WHERE id = %s AND version = %s
+            RETURNING *
+            """,
+            (execution_status, plan["id"], plan["version"]),
+        ).fetchone()
+        if updated is None:
+            raise _plan_version_conflict()
+        record_plan_event(
+            connection, plan_before=plan, plan_after=updated, actor_id=user_id,
+            request_id=request_id, action="EXECUTION_UPDATED",
+        )
+        plan = updated
+
+    return ContactPlanData(
+        plan_id=plan["id"], plan_version=plan["version"], review_status=plan["review_status"],
+        execution_status=plan["execution_status"],
+    )
+
+
 def _insert_contact(
     connection: Connection, user_id: UUID, client_id: UUID, client: dict,
     assignment_id: UUID, contact_id: UUID, request_id: UUID, payload: ContactCreateRequest,
+    *, plan_version_at_contact: int | None,
 ) -> None:
     connection.execute(
         """
         INSERT INTO contact_records (
             id, client_id, worker_id, assignment_id, organization_id, region_id,
-            checklist_version_id, channel, result, occurred_at, crisis_detected,
+            plan_id, plan_version, checklist_version_id, channel, result, occurred_at, crisis_detected,
             memo, next_check_date, no_action_reason, mutation_request_id
         )
-        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
         """,
         (
             contact_id, client_id, user_id, assignment_id, client["organization_id"], client["region_id"],
+            payload.plan_id, plan_version_at_contact,
             payload.checklist_version_id, payload.channel, payload.result, payload.occurred_at,
             payload.crisis_detected, payload.memo, payload.next_check_date, payload.no_action_reason,
             request_id,

@@ -5,7 +5,18 @@ from datetime import date, datetime, timezone
 from typing import Annotated, Literal
 from uuid import UUID
 
-from pydantic import AwareDatetime, BaseModel, ConfigDict, Field, StrictBool, StringConstraints, field_validator
+from pydantic import (
+    AwareDatetime,
+    BaseModel,
+    ConfigDict,
+    Field,
+    SerializerFunctionWrapHandler,
+    StrictBool,
+    StringConstraints,
+    field_validator,
+    model_serializer,
+    model_validator,
+)
 
 from dto.common_dto import SuccessResponse
 
@@ -59,6 +70,16 @@ class ContactCreateRequest(BaseModel):
     memo: DatabaseText | None = Field(default=None, max_length=2_000)
     next_check_date: date = Field(description="성공·실패·거부 모두 필수인 다음 확인 예정일")
     no_action_reason: DatabaseText | None = None
+    plan_id: UUID | None = Field(default=None, description="연결할 확정 계획 ID")
+    plan_version: int | None = Field(
+        default=None, ge=1, le=2**63 - 1, strict=True, description="변경 충돌을 확인할 현재 계획의 version",
+    )
+
+    @model_validator(mode="after")
+    def validate_plan_link(self) -> "ContactCreateRequest":
+        if (self.plan_id is None) != (self.plan_version is None):
+            raise ValueError("plan_id와 plan_version을 함께 입력해 주세요.")
+        return self
 
     @field_validator("occurred_at", mode="before")
     @classmethod
@@ -87,6 +108,13 @@ class ContactCreateRequest(BaseModel):
         raise ValueError("next_check_date는 YYYY-MM-DD 형식의 날짜여야 합니다.")
 
 
+class ContactPlanData(BaseModel):
+    plan_id: UUID
+    plan_version: int = Field(ge=1, description="현장 기록 저장 후의 계획 버전")
+    review_status: Literal["CONFIRMED"]
+    execution_status: Literal["CONFIRMED", "CONTACT_FAILED"]
+
+
 class ContactCreatedData(BaseModel):
     contact_id: UUID
     client_id: UUID
@@ -95,6 +123,14 @@ class ContactCreatedData(BaseModel):
     last_attempt_at: AwareDatetime | None
     next_check_date: date
     calculation_status: Literal["PENDING"] = "PENDING"
+    plan: ContactPlanData | None = Field(default=None, description="계획에 연결한 경우에만 반환")
+
+    @model_serializer(mode="wrap")
+    def omit_unlinked_plan(self, handler: SerializerFunctionWrapHandler):
+        data = handler(self)
+        if self.plan is None:
+            data.pop("plan", None)
+        return data
 
 
 ContactFormResponse = SuccessResponse[ContactFormData]

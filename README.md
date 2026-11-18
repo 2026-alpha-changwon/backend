@@ -122,7 +122,7 @@ MVP는 가상 배정 명단을 사용합니다. 회원가입과 비밀번호 찾
 
 backend와 db는 독립된 GitHub 레포로 개발합니다. backend는 API 코드·DB 접속·조회/저장을 담당하고, db는 PostgreSQL 실행·테이블 생성/변경·초기 데이터를 관리합니다. 데이터 형식은 dto에 정의하고, API별 업무 로직과 SQL 조회·저장은 service에서 함께 처리합니다. 실제 DB 상태·스키마·초기 데이터·DB 컨테이너 설정은 DB 담당 채팅에서 확인합니다.
 
-배포 환경은 Raspberry Pi 5 8GB와 NVMe SSD의 Ubuntu Server 64비트 ARM64입니다. Mac에서 코드를 개발·검증하고 GitHub 원격에 반영한 뒤, 라즈베리파이에서 해당 코드를 받아 각 레포의 Docker Compose로 빌드·실행합니다. backend는 DATABASE_URL로 DB에 접속합니다. 개발 접근은 Tailscale, 공개 데모는 Tailscale Funnel을 사용하는 방향입니다.
+배포 환경은 Raspberry Pi 5 8GB와 NVMe SSD의 Ubuntu Server 64비트 ARM64입니다. Mac에서 코드를 개발·검증하고 GitHub 원격에 반영한 뒤, 라즈베리파이에서 해당 코드를 받아 각 레포의 Docker Compose로 빌드·실행합니다. backend는 DATABASE_URL로 DB에 접속합니다. 팀은 라즈베리파이의 `changwon_dev`와 기존 [Funnel API 주소](https://haeyoenupi.tail2927aa.ts.net)를 공유합니다.
 
 ## 상세 설계에서 확정할 사항
 
@@ -170,7 +170,12 @@ git pull --ff-only origin main
 sudo docker compose up -d --build
 ```
 
-기본 주소는 라즈베리파이 주소의 8000번 포트입니다. /docs에서 실행 중인 API 문서를 확인합니다. Compose healthcheck는 /openapi.json의 HTTP 응답을 확인합니다. 기존 `.env`에도 위 `DEV_USER_ID` 값을 추가하고 컨테이너를 다시 빌드·실행하면 Swagger에서 로그인 없이 R03를 조회할 수 있습니다.
+라즈베리파이의 API는 8000번 포트에서 실행합니다. Compose healthcheck는 /openapi.json의 HTTP 응답을 확인합니다. 로그인 기능을 개발하기 전까지 Pi의 `.env`에 아래 두 값을 같은 개발 담당자로 설정해 조회, 계획 변경, 현장 기록 저장을 테스트합니다. 환경변수를 변경하면 API 컨테이너를 재생성합니다. [공유 Swagger](https://haeyoenupi.tail2927aa.ts.net/docs)
+
+```env
+DEV_USER_ID=bedfe465-7ea8-5356-a760-785d68f2252a
+CONTACT_WRITE_DEV_USER_ID=bedfe465-7ea8-5356-a760-785d68f2252a
+```
 
 Docker Compose 설정은 정적 검사했으며 실제 이미지 빌드·ARM64 컨테이너 실행·라즈베리 DB 연결 검증은 배포 단계에서 확인합니다.
 
@@ -182,13 +187,4 @@ Python 3.11 이상의 로컬 검증 환경에서 requirements.txt의 패키지�
 .venv/bin/python -m unittest discover -s tests -v
 ```
 
-R07의 양식 조회와 방문·전화 기록 저장은 [API 요청서의 R07 계약](docs/03_백엔드_API_요청서.md#r07-첫-구현-범위)을 참고합니다. 로컬 저장을 확인할 때는 공통 개발 seed를 넣은 별도 PostgreSQL과 루프백에 바인딩한 API를 사용합니다.
-
-```sh
-DATABASE_URL='<별도 개발 DB의 DSN>' \
-DEV_USER_ID=bedfe465-7ea8-5356-a760-785d68f2252a \
-CONTACT_WRITE_DEV_USER_ID=bedfe465-7ea8-5356-a760-785d68f2252a \
-.venv/bin/python -m uvicorn main:app --host 127.0.0.1 --port 8000
-```
-
-`CONTACT_WRITE_DEV_USER_ID`는 위와 같은 비공개 개발 서버에서만 설정합니다. 비어 있으면 저장에 유효한 세션 쿠키가 필요합니다. 프론트 개발 서버로 확인할 때는 브라우저 주소의 Origin을 `CORS_ORIGINS`에 추가하고 `Content-Type: application/json`으로 요청합니다. R07 통합 테스트는 개발 seed를 넣은 일회용 로컬 DB `meonjeogayo_r07_test`의 DSN을 `R07_TEST_DATABASE_URL`에 지정해 실행합니다.
+팀은 위 공유 API에서 로그인 없이 주간 계획을 조회하고 일정을 확정하거나 변경한 뒤, 그 계획에 현장 연락 기록을 연결할 수 있습니다. POST 요청에는 `Content-Type: application/json`을 사용합니다. [API 요청서](docs/03_백엔드_API_요청서.md)

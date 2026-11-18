@@ -33,17 +33,17 @@ def get_current_user_id(
     return get_session_user_id(connection, token)
 
 
-def _get_contact_credentials(token: Annotated[str | None, Security(session_cookie)]) -> str | UUID:
+def _get_write_credentials(token: Annotated[str | None, Security(session_cookie)]) -> str | UUID:
     if token:
         return token
     dev_writer_id = get_settings().contact_write_dev_user_id
     if dev_writer_id is None:
-        raise ApiError("AUTH_REQUIRED", "현장 기록을 저장하려면 로그인이 필요합니다.", status_code=401)
+        raise ApiError("AUTH_REQUIRED", "저장하려면 로그인이 필요합니다.", status_code=401)
     return dev_writer_id
 
 
-def get_contact_writer_id(
-    credentials: Annotated[str | UUID, Depends(_get_contact_credentials)],
+def get_current_writer_id(
+    credentials: Annotated[str | UUID, Depends(_get_write_credentials)],
     connection: Annotated[Connection, Depends(get_write_connection, scope="function")],
 ) -> UUID:
     if isinstance(credentials, UUID):

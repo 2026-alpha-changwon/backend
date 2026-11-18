@@ -10,6 +10,7 @@ from starlette.exceptions import HTTPException
 from config.settings import get_settings
 from handler.client_handler import router as client_router
 from handler.contact_handler import router as contact_router
+from handler.plan_handler import router as plan_router
 from util.errors import ApiError
 from util.response import error_response
 
@@ -32,6 +33,7 @@ app.add_middleware(
 )
 app.include_router(client_router)
 app.include_router(contact_router)
+app.include_router(plan_router)
 
 
 @app.exception_handler(ApiError)
